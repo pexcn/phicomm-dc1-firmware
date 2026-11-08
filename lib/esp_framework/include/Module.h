@@ -34,7 +34,7 @@ public:
     virtual bool flushRuntime() { return true; }
 
     virtual void httpAdd(ESP8266WebServer *server);
-    virtual void httpHtml(ESP8266WebServer *server);
+    virtual String httpGetConfig() { return F("{}"); }
     virtual String httpGetStatus(ESP8266WebServer *server);
 
 #ifndef DISABLE_MQTT

@@ -389,125 +389,25 @@ String DC1::httpGetStatus(ESP8266WebServer *server)
         : energyResult != RuntimeStorage::Result::Ok ? "尚无已保存快照"
         : energySavePending ? "快照有效，有待保存的变化" : "快照有效";
     data += "\"";
+    data += ",\"runtime_ready\":" + String(RuntimeStorage::ready() ? 1 : 0);
+    data += ",\"relay_needs_recovery\":" + String(relayResult == RuntimeStorage::Result::Invalid || !relayStateValid ? 1 : 0);
+    data += ",\"energy_needs_recovery\":" + String(energyResult == RuntimeStorage::Result::Invalid ? 1 : 0);
     return data.substring(1);
 }
 
-void DC1::httpHtml(ESP8266WebServer *server)
+String DC1::httpGetConfig()
 {
-    server->sendContent_P(
-        PSTR("<table class='gridtable'><thead><tr><th colspan='2'>开关状态</th></tr></thead><tbody>"
-             "<tr style='text-align:center'><td colspan='2'>"));
-
-    for (size_t ch = 0; ch < channels; ch++)
-    {
-        snprintf_P(tmpData, sizeof(tmpData),
-                   PSTR(" <button type='button' style='width:50px' onclick=\"ajaxPost('/dc1_do', 'do=T&c=%d');\" id='power%d' class='btn-%s'>%s</button>"),
-                   ch + 1, ch + 1,
-                   bitRead(lastState, ch) ? PSTR("success") : PSTR("info"),
-                   bitRead(lastState, ch) ? PSTR("开") : PSTR("关"));
-        server->sendContent_P(tmpData);
-    }
-
-    server->sendContent_P(
-        PSTR("</td></tr></tbody></table>"
-
-             "<table class='gridtable'><thead><tr><th colspan='2'>电量统计</th></tr></thead><tbody>"
-             "<tr colspan='2'><td><div style='width:260px;margin:0 auto;text-align:left'>"
-             "&#12288;&#12288;&#12288;电压：<span id='voltage'>0</span> V"
-             "<br>&#12288;&#12288;&#12288;电流：<span id='current'>0</span> A"
-             "<br>&#12288;&#12288;&#12288;功率：<span id='power'>0</span> W"
-             "<br>&#12288;视在功率：<span id='apparent_power'>0</span> VA"
-             "<br>&#12288;无功功率：<span id='reactive_power'></span> VAr"
-             "<br>&#12288;功率因数：<span id='factor'>0</span>"
-             "<br>用电量每 8 小时及跨日保存"
-             "<br>文件系统：<span id='runtime_storage'>--</span>"
-             "<br>开关记忆：<span id='relay_record'>--</span>"
-             "<br>电量记录：<span id='energy_record'>--</span>"
-             "<br><button type='button' class='btn-info' onclick=\"if(confirm('首次使用或存储损坏时使用。可能清除历史电量和开关记忆，继续？')){ajaxPost('/dc1_storage','initialize=1');}\">初始化运行数据存储</button>"
-             "<br>今日用电量：<span id='today'>0</span> kWh"
-             "<br>昨日用电量：<span id='yesterday'>0</span> kWh"
-             "<br>&#12288;总用电量：<span id='total'>0</span> kWh"
-             "<br>&#12288;开始时间：<span id='starttime'>--</span>"
-             "</div></td></tr></tbody></table>"));
-
-    if (relayResult == RuntimeStorage::Result::Invalid || !relayStateValid)
-        server->sendContent_P(PSTR("<button type='button' class='btn-info' onclick=\"if(confirm('使用当前实际开关状态重建记忆？损坏的旧记录将被替换。')){ajaxPost('/dc1_storage','recover=relay');}\">恢复开关记忆</button>"));
-    if (energyResult == RuntimeStorage::Result::Invalid)
-        server->sendContent_P(PSTR("<button type='button' class='btn-danger' onclick=\"if(confirm('损坏的电量记录将被替换，并从零重新统计，继续？')){ajaxPost('/dc1_storage','recover=energy');}\">重新开始电量统计</button>"));
-
-    server->sendContent_P(
-        PSTR("<form method='post' action='/dc1_setting' onsubmit='postform(this);return false'>"
-             "<table class='gridtable'><thead><tr><th colspan='2'>DC1插线板设置</th></tr></thead><tbody>"
-             "<tr><td>上电状态</td><td>"
-             "<label class='bui-radios-label'><input type='radio' name='power_on_state' value='0'/><i class='bui-radios'></i> 开关通电时断开</label><br/>"
-             "<label class='bui-radios-label'><input type='radio' name='power_on_state' value='1'/><i class='bui-radios'></i> 开关通电时闭合</label><br/>"
-             "<label class='bui-radios-label'><input type='radio' name='power_on_state' value='2'/><i class='bui-radios'></i> 开关通电时状态与断电前相反</label><br/>"
-             "<label class='bui-radios-label'><input type='radio' name='power_on_state' value='3'/><i class='bui-radios'></i> 开关通电时保持断电前状态</label>"
-             "</td></tr>"));
-
-    server->sendContent_P(
-        PSTR("<tr><td>开关模式</td><td>"
-             "<label class='bui-radios-label'><input type='radio' name='power_mode' value='0'/><i class='bui-radios'></i> 自锁</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='power_mode' value='1'/><i class='bui-radios'></i> 互锁</label>"
-             "</td></tr>"));
-
-    server->sendContent_P(
-        PSTR("<tr><td>LOGO LED</td><td>"
-             "<label class='bui-radios-label'><input type='radio' name='logo_led' value='0'/><i class='bui-radios'></i> 常亮</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='logo_led' value='1'/><i class='bui-radios'></i> 常灭</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='logo_led' value='2'/><i class='bui-radios'></i> 跟随总开关</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='logo_led' value='3'/><i class='bui-radios'></i> 与总开关相反</label>"
-             "</td></tr>"));
-
-    server->sendContent_P(
-        PSTR("<tr><td>WIFI LED</td><td>"
-             "<label class='bui-radios-label'><input type='radio' name='wifi_led' value='0'/><i class='bui-radios'></i> 常亮</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='wifi_led' value='1'/><i class='bui-radios'></i> 常灭</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='wifi_led' value='2'/><i class='bui-radios'></i> 闪烁</label><br>未连接WIFI或者MQTT时为快闪"
-             "</td></tr>"));
-
-    server->sendContent_P(
-        PSTR("<tr><td>分开关联动</td><td>"
-             "<label class='bui-radios-label'><input type='radio' name='sub_kinkage' value='0'/><i class='bui-radios'></i> 不联动</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='sub_kinkage' value='1'/><i class='bui-radios'></i> 总关禁开</label>&nbsp;&nbsp;&nbsp;&nbsp;"
-             "<label class='bui-radios-label'><input type='radio' name='sub_kinkage' value='2'/><i class='bui-radios'></i> 分开总开</label>"
-             "</td></tr>"));
-
     snprintf_P(tmpData, sizeof(tmpData),
-               PSTR("<tr><td>主动上报间隔</td><td><input type='number' min='0' max='3600' name='report_interval' required value='%d'>&nbsp;秒，0关闭</td></tr>"
-                    "<tr><td>功率波动</td><td><input type='number' min='0' max='4000' name='energy_power_delta' required value='%d'>&nbsp;0关闭，1-100为百分比，>100是差值(-100)</td></tr>"
-                    "<tr><td>过载保护</td><td><input type='number' min='0' max='2600' name='energy_max_power' required value='%d'>&nbsp;W&nbsp;&nbsp;&nbsp;&nbsp;0关闭</td></tr>"),
-               config.report_interval, config.energy_power_delta, config.energy_max_power);
-    server->sendContent_P(tmpData);
-
-    server->sendContent_P(
-        PSTR("<tr><td colspan='2'><button type='submit' class='btn-info'>设置</button><br>"
-             "<button type='button' class='btn-success' style='margin-top:10px' onclick='window.location.href=\"/ha\"'>下载HA配置文件</button><br>"
-             "<button type='button' class='btn-danger' style='margin-top:10px' onclick=\"javascript:if(confirm('确定要重置用电量？')){ajaxPost('/dc1_setting', 'c=1');}\">重置用电量</button></td></tr>"
-             "</tbody></table></form>"));
-
-#ifdef USE_HOMEKIT
-    homekit_html(server);
-#endif
-
-    server->sendContent_P(
-        PSTR("<script type='text/javascript'>"
-             "function setDataSub(data,key){if(key.substr(0,5)=='power' && key.length==6){var t=id(key);var v=data[key];t.setAttribute('class',v==1?'btn-success':'btn-info');t.innerHTML=v==1?'开':'关';return true}return false}"));
-
-    snprintf_P(tmpData, sizeof(tmpData),
-               PSTR("setRadioValue('power_on_state', '%d');"
-                    "setRadioValue('power_mode', '%d');"
-                    "setRadioValue('logo_led', '%d');"
-                    "setRadioValue('wifi_led', '%d');"
-                    "setRadioValue('sub_kinkage', '%d');"),
-               config.power_on_state, config.power_mode, config.logo_led, config.wifi_led, config.sub_kinkage);
-    server->sendContent_P(tmpData);
-
-    server->sendContent_P(PSTR("</script>"));
+        PSTR("{\"power_on_state\":%u,\"power_mode\":%u,\"logo_led\":%u,\"wifi_led\":%u,"
+             "\"sub_kinkage\":%u,\"report_interval\":%u,\"energy_power_delta\":%u,\"energy_max_power\":%u}"),
+        config.power_on_state, config.power_mode, config.logo_led, config.wifi_led,
+        config.sub_kinkage, config.report_interval, config.energy_power_delta, config.energy_max_power);
+    return String(tmpData);
 }
 
 void DC1::httpDo(ESP8266WebServer *server)
 {
+    if (!Http::checkAuth()) return;
     String c = server->arg(F("c"));
     if (c != F("1") && c != F("2") && c != F("3") && c != F("4"))
     {

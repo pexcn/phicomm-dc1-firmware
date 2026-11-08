@@ -11,6 +11,7 @@ class Http
 private:
     static bool isBegin;
     static void handleRoot();
+    static void handleConfig();
 #ifndef DISABLE_MQTT
     static void handleMqtt();
 #ifndef DISABLE_MQTT_DISCOVERY

@@ -115,7 +115,7 @@ public:
     void mqttDiscovery(bool isEnable = true);
 
     void httpAdd(ESP8266WebServer *server);
-    void httpHtml(ESP8266WebServer *server);
+    String httpGetConfig();
     String httpGetStatus(ESP8266WebServer *server);
 
     void switchRelay(uint8_t ch, bool isOn, bool isSave = true);
