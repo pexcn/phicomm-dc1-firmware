@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-26.04
@@ -30,7 +34,11 @@ jobs:
         run: python3 tests/host/run.py
 
       - name: Set release tag
-        run: echo "RELEASE_TAG=$(date +%Y%m%d)" >> $GITHUB_ENV
+        run: |
+          RELEASE_TAG=$(date +%Y%m%d)
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          git tag --force "$RELEASE_TAG" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$RELEASE_TAG"
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v3
