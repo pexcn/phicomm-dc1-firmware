@@ -4,6 +4,5 @@
 .vscode/launch.json
 .vscode/ipch
 /firmware.map
-/mklink.bat
 /output
 Homekit*
