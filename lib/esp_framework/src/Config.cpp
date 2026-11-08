@@ -9,16 +9,15 @@ uint32_t perSecond;
 Ticker *tickerPerSecond;
 GlobalConfigMessage globalConfig;
 
-uint16_t Config::nowCrc;
-uint8_t Config::countdown = 60;
-bool Config::isDelay = false;
+bool Config::savePending = false;
+unsigned long Config::saveAt = 0;
 
 const uint16_t crcTalbe[] = {
     0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
     0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400};
 
 extern uint32_t _EEPROM_start; //See EEPROM.cpp
-#define EEPROM_PHYS_ADDR ((uint32_t)(&_EEPROM_start) - 0x40200000)
+#define EEPROM_PHYS_ADDR ((uintptr_t)(&_EEPROM_start) - 0x40200000)
 
 /**
  * 计算Crc16
@@ -78,47 +77,29 @@ void Config::resetConfig()
 
 void Config::readConfig()
 {
-    uint8_t buf[6] = {0};
-    if (spi_flash_read(EEPROM_PHYS_ADDR, (uint32 *)buf, 6) != SPI_FLASH_RESULT_OK)
-    {
-    }
-
-    uint16 len;
+    // The SDK requires word-aligned reads. The legacy payload starts at byte 6,
+    // so read the complete sector and decode the unaligned payload from RAM.
+    uint8_t *data = (uint8_t *)malloc(SPI_FLASH_SEC_SIZE);
     bool status = false;
-    uint16 cfg = (buf[0] << 8 | buf[1]);
-    if (cfg == GLOBAL_CFG_VERSION)
+    uint16_t len = 0;
+    if (data && spi_flash_read(EEPROM_PHYS_ADDR, (uint32 *)data, SPI_FLASH_SEC_SIZE) == SPI_FLASH_RESULT_OK)
     {
-        len = (buf[2] << 8 | buf[3]);
-        nowCrc = (buf[4] << 8 | buf[5]);
-
-        if (len > GlobalConfigMessage_size)
+        uint16_t version = (data[0] << 8 | data[1]);
+        len = (data[2] << 8 | data[3]);
+        uint16_t crc = (data[4] << 8 | data[5]);
+        if (version == GLOBAL_CFG_VERSION && len <= GlobalConfigMessage_size
+            && len <= SPI_FLASH_SEC_SIZE - 6 && crc16(data + 6, len) == crc)
         {
-            len = GlobalConfigMessage_size;
-        }
-        //Debug::AddInfo(PSTR("readConfig . . . Len: %d Crc: %d"), len, nowCrc);
-
-        uint8_t *data = (uint8_t *)malloc(len);
-        if (spi_flash_read(EEPROM_PHYS_ADDR + 6, (uint32 *)data, len) == SPI_FLASH_RESULT_OK)
-        {
-            uint16_t crc = crc16(data, len);
-            if (crc == nowCrc)
+            memset(&globalConfig, 0, sizeof(GlobalConfigMessage));
+            pb_istream_t stream = pb_istream_from_buffer(data + 6, len);
+            status = pb_decode(&stream, GlobalConfigMessage_fields, &globalConfig);
+            if (globalConfig.http.port == 0)
             {
-                memset(&globalConfig, 0, sizeof(GlobalConfigMessage));
-                pb_istream_t stream = pb_istream_from_buffer(data, len);
-                status = pb_decode(&stream, GlobalConfigMessage_fields, &globalConfig);
-                if (globalConfig.http.port == 0)
-                {
-                    globalConfig.http.port = 80;
-                }
-            }
-            else
-            {
-                Debug::AddError(PSTR("readConfig . . . Error Crc: %d Crc: %d"), crc, nowCrc);
+                globalConfig.http.port = 80;
             }
         }
-        free(data);
     }
-
+    free(data);
     if (!status)
     {
         globalConfig.debug.type = 1;
@@ -135,98 +116,88 @@ void Config::readConfig()
     }
 }
 
-bool Config::saveConfig(bool isEverySecond)
+bool Config::saveConfig()
 {
-    countdown = 60;
-    if (module)
+    if (writeConfig())
     {
-        module->saveConfig(isEverySecond);
+        savePending = false;
+        return true;
+    }
+    // Keep failed changes pending; never treat a failed write as committed.
+    savePending = true;
+    saveAt = millis() + 60000;
+    return false;
+}
+
+bool Config::prepareRestart()
+{
+    if (module && !module->flushRuntime())
+    {
+        Debug::AddError(PSTR("Restart/OTA cancelled: runtime data not saved"));
+        return false;
+    }
+    return saveConfig();
+}
+
+bool Config::writeConfig()
+{
+    if (module && !module->saveConfig())
+    {
+        return false;
     }
     uint8_t buffer[GlobalConfigMessage_size];
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
-    bool status = pb_encode(&stream, GlobalConfigMessage_fields, &globalConfig);
-    size_t len = stream.bytes_written;
-    if (!status)
+    if (!pb_encode(&stream, GlobalConfigMessage_fields, &globalConfig))
     {
-        Debug::AddError(PSTR("saveConfig . . . Error"));
+        Debug::AddError(PSTR("saveConfig . . . Encode Error"));
         return false;
     }
-    else
-    {
-        uint16_t crc = crc16(buffer, len);
-        if (crc == nowCrc)
-        {
-            // Debug::AddInfo(PSTR("Check Config CRC . . . Same"));
-            return true;
-        }
-        else
-        {
-            nowCrc = crc;
-        }
-    }
-
-    // 读取原来数据
+    size_t len = stream.bytes_written;
+    uint16_t crc = crc16(buffer, len);
+    uint8_t header[6] = {uint8_t(GLOBAL_CFG_VERSION >> 8), uint8_t(GLOBAL_CFG_VERSION),
+                         uint8_t(len >> 8), uint8_t(len), uint8_t(crc >> 8), uint8_t(crc)};
     uint8_t *data = (uint8_t *)malloc(SPI_FLASH_SEC_SIZE);
+    if (!data)
+    {
+        return false;
+    }
     if (spi_flash_read(EEPROM_PHYS_ADDR, (uint32 *)data, SPI_FLASH_SEC_SIZE) != SPI_FLASH_RESULT_OK)
     {
         free(data);
         Debug::AddError(PSTR("saveConfig . . . Read EEPROM Data Error"));
         return false;
     }
-
-    // 拷贝数据
-    data[0] = GLOBAL_CFG_VERSION >> 8;
-    data[1] = GLOBAL_CFG_VERSION;
-
-    data[2] = len >> 8;
-    data[3] = len;
-
-    data[4] = nowCrc >> 8;
-    data[5] = nowCrc;
-
-    memcpy(&data[6], buffer, len);
-
-    // 擦写扇区
-    if (spi_flash_erase_sector(EEPROM_PHYS_ADDR / SPI_FLASH_SEC_SIZE) != SPI_FLASH_RESULT_OK)
+    // Compare the actual bytes as well as the checksum (CRC16 can collide).
+    if (memcmp(data, header, sizeof(header)) == 0 && memcmp(data + 6, buffer, len) == 0)
     {
         free(data);
-        Debug::AddError(PSTR("saveConfig . . . Erase Sector Error"));
-        return false;
+        return true;
     }
-
-    // 写入数据
-    if (spi_flash_write(EEPROM_PHYS_ADDR, (uint32 *)data, SPI_FLASH_SEC_SIZE) != SPI_FLASH_RESULT_OK)
-    {
-        free(data);
-        Debug::AddError(PSTR("saveConfig . . . Write EEPROM Data Error"));
-        return false;
-    }
+    memcpy(data, header, sizeof(header));
+    memcpy(data + 6, buffer, len);
+    bool status = spi_flash_erase_sector(EEPROM_PHYS_ADDR / SPI_FLASH_SEC_SIZE) == SPI_FLASH_RESULT_OK
+        && spi_flash_write(EEPROM_PHYS_ADDR, (uint32 *)data, SPI_FLASH_SEC_SIZE) == SPI_FLASH_RESULT_OK
+        && spi_flash_read(EEPROM_PHYS_ADDR, (uint32 *)data, SPI_FLASH_SEC_SIZE) == SPI_FLASH_RESULT_OK
+        && memcmp(data, header, sizeof(header)) == 0 && memcmp(data + 6, buffer, len) == 0;
     free(data);
-
-    Debug::AddInfo(PSTR("saveConfig . . . OK Len: %d Crc: %d"), len, nowCrc);
+    if (!status)
+    {
+        Debug::AddError(PSTR("saveConfig . . . Write/Verify Error"));
+        return false;
+    }
+    Debug::AddInfo(PSTR("saveConfig . . . OK Len: %d Crc: %d"), len, crc);
     return true;
 }
 
-void Config::perSecondDo()
+void Config::loop()
 {
-    countdown--;
-    if (countdown == 0)
+    if (savePending && (int32_t)(millis() - saveAt) >= 0)
     {
-        saveConfig(Config::isDelay ? false : true);
-        Config::isDelay = false;
+        saveConfig();
     }
 }
 
-void Config::delaySaveConfig(uint8_t second)
-{
-    Config::isDelay = true;
-    if (countdown > second)
-    {
-        countdown = second;
-    }
-}
-
-void Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_field_t fields[], void *dest_struct)
+bool Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_field_t fields[], void *dest_struct)
 {
     if (globalConfig.module_cfg.size == 0                                                                         // 没有数据
         || globalConfig.cfg_version != version                                                                    // 版本不一致
@@ -237,7 +208,7 @@ void Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_field_t 
         {
             module->resetConfig();
         }
-        return;
+        return false;
     }
     memset(dest_struct, 0, size);
     pb_istream_t stream = pb_istream_from_buffer(globalConfig.module_cfg.bytes, globalConfig.module_cfg.size);
@@ -253,6 +224,7 @@ void Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_field_t 
     {
         Debug::AddInfo(PSTR("moduleReadConfig . . . OK Len: %d"), globalConfig.module_cfg.size);
     }
+    return status;
 }
 
 bool Config::moduleSaveConfig(uint16_t version, uint16_t size, const pb_field_t fields[], const void *src_struct)
@@ -264,7 +236,8 @@ bool Config::moduleSaveConfig(uint16_t version, uint16_t size, const pb_field_t 
     {
         size_t len = stream.bytes_written;
         uint16_t crc = Config::crc16(buffer, len);
-        if (crc != globalConfig.module_crc)
+        if (version != globalConfig.cfg_version || len != globalConfig.module_cfg.size
+            || memcmp(buffer, globalConfig.module_cfg.bytes, len) != 0)
         {
             globalConfig.cfg_version = version;
             globalConfig.module_crc = crc;

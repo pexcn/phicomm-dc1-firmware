@@ -26,9 +26,11 @@ private:
     static void handleOTA();
     static void handleGetStatus();
     static void handleUpdate();
-    static bool checkAuth();
+    static bool prepareRestartOrError();
 
 public:
+    static bool checkAuth();
+    static bool saveConfigOrError();
     static ESP8266WebServer *server;
     static void begin();
     static void stop();

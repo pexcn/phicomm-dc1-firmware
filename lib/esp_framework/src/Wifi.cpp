@@ -1,7 +1,6 @@
 #include <WiFiClient.h>
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
-#include <Ticker.h>
 #include "Wifi.h"
 #include "Debug.h"
 
@@ -11,6 +10,8 @@ WiFiEventHandler Wifi::STAGotIP;
 bool Wifi::isDHCP = true;
 
 unsigned long Wifi::configPortalStart = 0;
+static bool restartPending = false;
+static unsigned long restartAt = 0;
 #ifdef WIFI_CONNECT_TIMEOUT
 unsigned long Wifi::connectStart = 0;
 #endif
@@ -133,6 +134,12 @@ void Wifi::tryConnect(String ssid, String pass)
 
 void Wifi::loop()
 {
+    if (restartPending && (int32_t)(millis() - restartAt) >= 0)
+    {
+        restartPending = false;
+        if (Config::prepareRestart()) ESP.restart();
+        return;
+    }
 #ifdef WIFI_CONNECT_TIMEOUT
     if (connectStart > 0 && millis() > connectStart + (WIFI_CONNECT_TIMEOUT * 1000))
     {
@@ -163,15 +170,19 @@ void Wifi::loop()
     {
         strcpy(globalConfig.wifi.ssid, _ssid.c_str());
         strcpy(globalConfig.wifi.pass, _pass.c_str());
-        Config::saveConfig();
+        static unsigned long retryAt = 0;
+        if (retryAt && (int32_t)(millis() - retryAt) < 0) return;
+        if (!Config::saveConfig())
+        {
+            retryAt = millis() + 60000;
+            Debug::AddError(PSTR("WiFi connected but settings not saved; keeping setup portal open"));
+            return;
+        }
+        retryAt = 0;
 
         //	为了使WEB获取到IP 2秒后才关闭AP
-        Ticker *ticker = new Ticker();
-        ticker->attach(3, []() {
-            WiFi.mode(WIFI_STA);
-            Debug::AddInfo(PSTR("SET STA Mode"));
-            ESP.reset();
-        });
+        restartPending = true;
+        restartAt = millis() + 3000;
 
         Debug::AddInfo(PSTR("WiFi connected. SSID: %s IP address: %s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
 
@@ -193,19 +204,14 @@ void Wifi::loop()
         if (WiFi.isConnected())
         {
             //	为了使WEB获取到IP 2秒后才关闭AP
-            Ticker *ticker = new Ticker();
-            ticker->attach(3, []() {
-                WiFi.mode(WIFI_STA);
-                Debug::AddInfo(PSTR("SET STA Mode"));
-                ESP.reset();
-            });
+            restartPending = true;
+            restartAt = millis() + 3000;
         }
         else
         {
             Debug::AddInfo(PSTR("Wifi failed to connect and hit timeout. Rebooting..."));
-            delay(3000);
-            ESP.reset(); // 重置，可能进入深度睡眠状态
-            delay(5000);
+            restartPending = true;
+            restartAt = millis() + 3000;
         }
     }
 }

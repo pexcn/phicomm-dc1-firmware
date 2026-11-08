@@ -6,6 +6,7 @@
 #include "Module.h"
 #include "CAT9554.h"
 #include "CSE7766.h"
+#include "RuntimeStorage.h"
 
 #define MODULE_CFG_VERSION 1002 //1001 - 1500
 
@@ -32,14 +33,31 @@
 class DC1 : public Module
 {
 private:
-    uint8_t operationFlag = 0; // 0每秒CSE7766， 1有保存操作
+    uint8_t operationFlag = 0; // 0每秒CSE7766
+    EnergyState energy;
+    uint8_t rememberedState = 0;
+    bool relayStateValid = false;
+    RuntimeStorage::Result relayResult = RuntimeStorage::Result::Missing;
+    RuntimeStorage::Result energyResult = RuntimeStorage::Result::Missing;
+    bool relaySavePending = false;
+    bool runtimeMigrationPending = false;
+    bool runtimeLoaded = false;
+    void readRuntime(bool legacyValid);
+    bool energySavePending = false;
+    uint32_t energySaveAt = 0;
+    uint32_t energyCheckpointAt = 0;
+    void scheduleEnergySave(uint32_t delay = 0);
+    bool saveRelay(bool recover = false);
+    bool saveEnergy(bool recover = false);
+    bool saveRuntime(bool recover = false);
+    unsigned long relaySaveAt = 0;
+    void scheduleRelaySave();
 
     CAT9554 *cat9554;
-    CSE7766 *cse7766;
+    CSE7766 *cse7766 = nullptr;
     char kWhtotalTime[20];
     void energyInit();
-    void energyClear();
-    void energySync();
+    bool energyClear();
     void energyUpdate();
     void energyUpdateToday();
     void energyMarginCheck();
@@ -62,6 +80,7 @@ private:
 
     void httpDo(ESP8266WebServer *server);
     void httpSetting(ESP8266WebServer *server);
+    void httpStorage(ESP8266WebServer *server);
     void httpHa(ESP8266WebServer *server);
 
     void logoLed();
@@ -87,7 +106,9 @@ public:
 
     void readConfig();
     void resetConfig();
-    void saveConfig(bool isEverySecond);
+    bool saveConfig();
+    bool resetRuntime();
+    bool flushRuntime();
 
     void mqttCallback(char *topic, char *payload, char *cmnd);
     void mqttConnected();

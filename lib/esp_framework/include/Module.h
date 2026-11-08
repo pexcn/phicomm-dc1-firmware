@@ -29,7 +29,9 @@ public:
 
     virtual void readConfig();
     virtual void resetConfig();
-    virtual void saveConfig(bool isEverySecond);
+    virtual bool saveConfig();
+    virtual bool resetRuntime() { return true; }
+    virtual bool flushRuntime() { return true; }
 
     virtual void httpAdd(ESP8266WebServer *server);
     virtual void httpHtml(ESP8266WebServer *server);

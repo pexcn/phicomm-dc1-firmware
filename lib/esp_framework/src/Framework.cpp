@@ -25,6 +25,7 @@ void Framework::callback(char *topic, byte *payload, unsigned int length)
     }
     else if (strcmp(cmnd, "restart") == 0)
     {
+        if (!Config::prepareRestart()) return;
         ESP.reset();
     }
     else if (module)
@@ -60,7 +61,6 @@ void Framework::tickerPerSecondDo()
     }
     Rtc::perSecondDo();
 
-    Config::perSecondDo();
 #ifndef DISABLE_MQTT
     Mqtt::perSecondDo();
 #endif
@@ -159,6 +159,7 @@ void Framework::loop()
 #endif
         yield();
         module->loop();
+        Config::loop();
         yield();
         Wifi::loop();
         yield();

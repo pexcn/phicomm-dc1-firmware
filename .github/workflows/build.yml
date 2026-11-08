@@ -18,6 +18,9 @@ jobs:
       - name: Run PlatformIO
         run: platformio run
 
+      - name: Test persistence policies
+        run: python3 tests/host/run.py
+
       - name: Set release tag
         run: echo "RELEASE_TAG=$(date +%Y%m%d)" >> $GITHUB_ENV
 

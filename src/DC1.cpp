@@ -1,15 +1,20 @@
 
 #include "DC1.h"
 #include "Rtc.h"
+#include "RuntimeStorage.h"
+#include "Http.h"
 #include "Util.h"
 #ifdef USE_HOMEKIT
 #include "HomeKit.h"
 #endif
 
+static const uint32_t ENERGY_SAVE_INTERVAL_MS = 8UL * 60 * 60 * 1000;
+
 #pragma region 继承
 
 void DC1::init()
 {
+    if (!runtimeLoaded) readRuntime(false);
     Led::init(LED_PIN, LOW);
     cat9554 = new CAT9554(CAT9554_SDA_PIN, CAT9554_SCL_PIN);
     cat9554->setIrqPin(CAT9554_IRQ_PIN);
@@ -36,28 +41,40 @@ void DC1::init()
     strcpy(energyTeleTopic, Mqtt::getTeleTopic(F("energy")).c_str());
 
     channels = 4;
+    bool safeOff = config.power_on_state >= 2 && !relayStateValid;
     for (uint8_t ch = 0; ch < channels; ch++)
     {
         // 0:开关通电时断开  1 : 开关通电时闭合  2 : 开关通电时状态与断电前相反  3 : 开关通电时保持断电前状态
-        if (config.power_on_state == 2)
+        if (safeOff)
         {
-            switchRelay(ch, !bitRead(config.last_state, ch), false); // 开关通电时状态与断电前相反
+            switchRelay(ch, false, false);
+        }
+        else if (config.power_on_state == 2)
+        {
+            switchRelay(ch, !bitRead(rememberedState, ch), false); // 开关通电时状态与断电前相反
         }
         else if (config.power_on_state == 3)
         {
-            switchRelay(ch, bitRead(config.last_state, ch), false); // 开关通电时保持断电前状态
+            switchRelay(ch, bitRead(rememberedState, ch), false); // 开关通电时保持断电前状态
         }
         else
         {
             switchRelay(ch, config.power_on_state == 1, false); // 开关通电时闭合
         }
         // 总开关关时跳过其他
-        if (ch == 0 && !bitRead(lastState, 0) && config.sub_kinkage != 0)
+        if (!safeOff && ch == 0 && !bitRead(lastState, 0) && config.sub_kinkage != 0)
         {
             break;
         }
     }
+    if (config.power_on_state < 2)
+    {
+        // If memory is enabled later, start from the fixed startup state.
+        rememberedState = lastState;
+        relayStateValid = true;
+    }
     energyInit();
+    energyCheckpointAt = millis() + ENERGY_SAVE_INTERVAL_MS;
 }
 
 bool DC1::moduleLed()
@@ -91,6 +108,12 @@ void DC1::loop()
         bitClear(operationFlag, 0);
         energyUpdate();
     }
+    if (relaySavePending && (int32_t)(millis() - relaySaveAt) >= 0) saveRelay();
+    if (energyResult != RuntimeStorage::Result::Invalid && !energySavePending
+        && (int32_t)(millis() - energyCheckpointAt) >= 0)
+        scheduleEnergySave();
+    if (energySavePending && (int32_t)(millis() - energySaveAt) >= 0) saveEnergy();
+    if (!relaySavePending && !energySavePending) runtimeMigrationPending = false;
 }
 
 void DC1::perSecondDo()
@@ -103,7 +126,62 @@ void DC1::perSecondDo()
 
 void DC1::readConfig()
 {
-    Config::moduleReadConfig(MODULE_CFG_VERSION, sizeof(DC1ConfigMessage), DC1ConfigMessage_fields, &config);
+    bool valid = Config::moduleReadConfig(MODULE_CFG_VERSION, sizeof(DC1ConfigMessage), DC1ConfigMessage_fields, &config);
+    readRuntime(valid);
+}
+
+void DC1::readRuntime(bool valid)
+{
+    runtimeLoaded = true;
+    RuntimeStorage::begin();
+    DC1LegacyStateMessage legacy = {};
+    if (valid)
+    {
+        pb_istream_t stream = pb_istream_from_buffer(globalConfig.module_cfg.bytes, globalConfig.module_cfg.size);
+        valid = pb_decode(&stream, DC1LegacyStateMessage_fields, &legacy);
+    }
+    relayResult = RuntimeStorage::loadRelay(rememberedState);
+    relayStateValid = relayResult == RuntimeStorage::Result::Ok;
+    if (relayResult != RuntimeStorage::Result::Ok)
+    {
+        // Only missing/unmounted files use legacy sources, never a corrupt record.
+        if (relayResult != RuntimeStorage::Result::Invalid)
+        {
+            relayStateValid = RuntimeStorage::readLegacyRelay(rememberedState);
+            // Proto3 omitted zero values; absence cannot establish trusted history.
+            if (!relayStateValid && valid && legacy.last_state != 0 && legacy.last_state <= 15)
+            {
+                rememberedState = legacy.last_state & 15;
+                relayStateValid = true;
+            }
+            if (relayStateValid)
+            {
+                scheduleRelaySave();
+                runtimeMigrationPending = true;
+            }
+        }
+        else Debug::AddError(PSTR("Relay snapshot invalid; legacy state not restored"));
+    }
+    energyResult = RuntimeStorage::loadEnergy(energy);
+    if (energyResult != RuntimeStorage::Result::Ok)
+    {
+        if (energyResult != RuntimeStorage::Result::Invalid)
+        {
+            if (valid)
+            {
+                energy.today = legacy.energy_kWhtoday;
+                energy.yesterday = legacy.energy_kWhyesterday;
+                energy.total = legacy.energy_kWhtotal;
+                energy.startTime = legacy.energy_kWhtotal_time;
+                if (energy.total || energy.today || energy.yesterday || energy.startTime)
+                    energy.legacyDay = legacy.energy_kWhdoy;
+            }
+            scheduleEnergySave();
+            runtimeMigrationPending = true;
+        }
+        else Debug::AddError(PSTR("Energy snapshot invalid; legacy counters not restored"));
+    }
+    if (runtimeMigrationPending && RuntimeStorage::ready()) saveRuntime();
 }
 
 void DC1::resetConfig()
@@ -121,14 +199,42 @@ void DC1::resetConfig()
     config.energy_max_power = 2300;
 }
 
-void DC1::saveConfig(bool isEverySecond)
+bool DC1::resetRuntime()
 {
-    if (bitRead(operationFlag, 1) || !isEverySecond)
+    runtimeLoaded = true;
+    rememberedState = 0;
+    relayStateValid = true;
+    energy = EnergyState();
+    RuntimeStorage::begin();
+    relaySavePending = true;
+    energySavePending = true;
+    runtimeMigrationPending = true;
+    relaySaveAt = energySaveAt = millis();
+    return saveRuntime(true);
+}
+
+bool DC1::flushRuntime()
+{
+    if (cse7766)
     {
-        bitClear(operationFlag, 1);
-        energySync();
+        cse7766->loop();
+        cse7766->everySecond();
+        energyUpdateToday();
     }
-    Config::moduleSaveConfig(MODULE_CFG_VERSION, DC1ConfigMessage_size, DC1ConfigMessage_fields, &config);
+    return saveRuntime();
+}
+
+bool DC1::saveConfig()
+{
+    // Do not discard the legacy state until its independent copy is committed.
+    if (runtimeMigrationPending)
+    {
+        bool relayOk = !relaySavePending || saveRelay();
+        bool energyOk = !energySavePending || saveEnergy();
+        if (!relayOk || !energyOk) return false;
+        runtimeMigrationPending = false;
+    }
+    return Config::moduleSaveConfig(MODULE_CFG_VERSION, DC1ConfigMessage_size, DC1ConfigMessage_fields, &config);
 }
 #pragma endregion
 
@@ -254,6 +360,7 @@ void DC1::httpAdd(ESP8266WebServer *server)
 {
     server->on(F("/dc1_do"), std::bind(&DC1::httpDo, this, server));
     server->on(F("/dc1_setting"), std::bind(&DC1::httpSetting, this, server));
+    server->on(F("/dc1_storage"), HTTP_POST, std::bind(&DC1::httpStorage, this, server));
     server->on(F("/ha"), std::bind(&DC1::httpHa, this, server));
 #ifdef USE_HOMEKIT
     server->on(F("/homekit"), std::bind(&homekit_http, server));
@@ -270,6 +377,18 @@ String DC1::httpGetStatus(ESP8266WebServer *server)
     }
     energyShow(false);
     data += String(tmpData);
+    data += ",\"runtime_storage\":\"";
+    data += RuntimeStorage::ready() ? "已挂载" : "未挂载，请初始化运行数据存储";
+    data += "\",\"relay_record\":\"";
+    data += relayResult == RuntimeStorage::Result::Invalid ? "记录损坏，已暂停保存，请恢复"
+        : !relayStateValid ? "无可信历史，记忆或反转上电将保持断开"
+        : relayResult != RuntimeStorage::Result::Ok ? "当前状态已知，尚无快照"
+        : relaySavePending ? "有待保存的变化" : "快照有效";
+    data += "\",\"energy_record\":\"";
+    data += energyResult == RuntimeStorage::Result::Invalid ? "记录损坏，当前为临时统计，已暂停保存"
+        : energyResult != RuntimeStorage::Result::Ok ? "尚无已保存快照"
+        : energySavePending ? "快照有效，有待保存的变化" : "快照有效";
+    data += "\"";
     return data.substring(1);
 }
 
@@ -300,11 +419,21 @@ void DC1::httpHtml(ESP8266WebServer *server)
              "<br>&#12288;视在功率：<span id='apparent_power'>0</span> VA"
              "<br>&#12288;无功功率：<span id='reactive_power'></span> VAr"
              "<br>&#12288;功率因数：<span id='factor'>0</span>"
+             "<br>用电量每 8 小时及跨日保存"
+             "<br>文件系统：<span id='runtime_storage'>--</span>"
+             "<br>开关记忆：<span id='relay_record'>--</span>"
+             "<br>电量记录：<span id='energy_record'>--</span>"
+             "<br><button type='button' class='btn-info' onclick=\"if(confirm('首次使用或存储损坏时使用。可能清除历史电量和开关记忆，继续？')){ajaxPost('/dc1_storage','initialize=1');}\">初始化运行数据存储</button>"
              "<br>今日用电量：<span id='today'>0</span> kWh"
              "<br>昨日用电量：<span id='yesterday'>0</span> kWh"
              "<br>&#12288;总用电量：<span id='total'>0</span> kWh"
              "<br>&#12288;开始时间：<span id='starttime'>--</span>"
              "</div></td></tr></tbody></table>"));
+
+    if (relayResult == RuntimeStorage::Result::Invalid || !relayStateValid)
+        server->sendContent_P(PSTR("<button type='button' class='btn-info' onclick=\"if(confirm('使用当前实际开关状态重建记忆？损坏的旧记录将被替换。')){ajaxPost('/dc1_storage','recover=relay');}\">恢复开关记忆</button>"));
+    if (energyResult == RuntimeStorage::Result::Invalid)
+        server->sendContent_P(PSTR("<button type='button' class='btn-danger' onclick=\"if(confirm('损坏的电量记录将被替换，并从零重新统计，继续？')){ajaxPost('/dc1_storage','recover=energy');}\">重新开始电量统计</button>"));
 
     server->sendContent_P(
         PSTR("<form method='post' action='/dc1_setting' onsubmit='postform(this);return false'>"
@@ -386,7 +515,7 @@ void DC1::httpDo(ESP8266WebServer *server)
         return;
     }
     uint8_t ch = c.toInt() - 1;
-    if (ch > channels)
+    if (ch >= channels)
     {
         server->send_P(200, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"继电器数量错误。\"}"));
         return;
@@ -402,9 +531,14 @@ void DC1::httpDo(ESP8266WebServer *server)
 
 void DC1::httpSetting(ESP8266WebServer *server)
 {
+    if (!Http::checkAuth()) return;
     if (server->hasArg(F("c")))
     {
-        energyClear();
+        if (!energyClear())
+        {
+            server->send_P(500, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"电量已在内存清零，但保存失败；请检查运行数据存储，稍后重试。\"}"));
+            return;
+        }
         server->setContentLength(CONTENT_LENGTH_UNKNOWN);
         server->send_P(200, PSTR("application/json"), PSTR("{\"code\":1,\"msg\":\"重置用电量成功。\",\"data\":{"));
         server->sendContent(httpGetStatus(server));
@@ -422,9 +556,60 @@ void DC1::httpSetting(ESP8266WebServer *server)
     config.energy_max_power = server->arg(F("energy_max_power")).toInt();
 
     logoLed();
+    if (config.power_on_state >= 2)
+    {
+        scheduleRelaySave();
+    }
+    else
+    {
+        relaySavePending = runtimeMigrationPending;
+    }
 
-    Config::saveConfig();
+    if (!Http::saveConfigOrError()) return;
     server->send_P(200, PSTR("application/json"), PSTR("{\"code\":1,\"msg\":\"已经设置成功。\"}"));
+}
+
+void DC1::httpStorage(ESP8266WebServer *server)
+{
+    if (!Http::checkAuth()) return;
+    String recover = server->arg(F("recover"));
+    bool ok = false;
+    if (RuntimeStorage::ready() && recover == F("relay")
+        && (relayResult == RuntimeStorage::Result::Invalid || !relayStateValid))
+    {
+        rememberedState = lastState;
+        relayStateValid = true;
+        ok = saveRelay(true);
+    }
+    else if (RuntimeStorage::ready() && recover == F("energy")
+        && energyResult == RuntimeStorage::Result::Invalid)
+    {
+        ok = energyClear();
+    }
+    else if (server->arg(F("initialize")) == F("1"))
+    {
+        if (RuntimeStorage::ready() && (relayResult == RuntimeStorage::Result::Invalid
+            || energyResult == RuntimeStorage::Result::Invalid))
+        {
+            server->send_P(409, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"文件系统可用，请分别恢复损坏的开关记忆或电量记录。\"}"));
+            return;
+        }
+        ok = RuntimeStorage::initialize() && saveRuntime();
+    }
+    else
+    {
+        server->send_P(400, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"请选择需要恢复的异常记录，或明确初始化存储。\"}"));
+        return;
+    }
+    if (!ok)
+    {
+        server->send_P(500, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"运行数据保存失败，原有记录未被主动清除，请检查设备后重试。\"}"));
+        return;
+    }
+    server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server->send_P(200, PSTR("application/json"), PSTR("{\"code\":1,\"msg\":\"操作已完成。\",\"data\":{"));
+    server->sendContent(httpGetStatus(server));
+    server->sendContent_P(PSTR("}}"));
 }
 
 void DC1::httpHa(ESP8266WebServer *server)
@@ -508,9 +693,78 @@ void DC1::logoLed()
     }
 }
 
+bool DC1::saveRelay(bool recover)
+{
+    if (relayResult == RuntimeStorage::Result::Invalid && !recover)
+    {
+        relaySavePending = false;
+        return false;
+    }
+    if (!relayStateValid)
+    {
+        relaySavePending = false;
+        return true; // Never turn the unknown default into a trusted snapshot.
+    }
+    if (RuntimeStorage::saveRelay(rememberedState, recover))
+    {
+        relaySavePending = false;
+        relayResult = RuntimeStorage::Result::Ok;
+        return true;
+    }
+    uint8_t previous;
+    relayResult = RuntimeStorage::loadRelay(previous);
+    relaySavePending = relayResult != RuntimeStorage::Result::Invalid;
+    relaySaveAt = millis() + 60000;
+    Debug::AddError(PSTR("Relay save failed; storage may need initialization"));
+    return false;
+}
+
+void DC1::scheduleEnergySave(uint32_t delay)
+{
+    energySavePending = true;
+    energySaveAt = millis() + delay;
+}
+
+bool DC1::saveEnergy(bool recover)
+{
+    if (energyResult == RuntimeStorage::Result::Invalid && !recover)
+    {
+        energySavePending = false;
+        return false;
+    }
+    if (RuntimeStorage::saveEnergy(energy, recover))
+    {
+        energySavePending = false;
+        energyResult = RuntimeStorage::Result::Ok;
+        energyCheckpointAt = millis() + ENERGY_SAVE_INTERVAL_MS;
+        return true;
+    }
+    EnergyState previous;
+    energyResult = RuntimeStorage::loadEnergy(previous);
+    if (energyResult == RuntimeStorage::Result::Invalid) energySavePending = false;
+    else scheduleEnergySave(60000);
+    Debug::AddError(PSTR("Energy save failed; storage may need initialization"));
+    return false;
+}
+
+bool DC1::saveRuntime(bool recover)
+{
+    bool relayOk = saveRelay(recover);
+    bool energyOk = saveEnergy(recover);
+    if (relayOk && energyOk) runtimeMigrationPending = false;
+    return relayOk && energyOk;
+}
+
+void DC1::scheduleRelaySave()
+{
+    relaySavePending = true;
+    // Merge a burst of channel changes; pending changes can be lost within 2s of power loss.
+    relaySaveAt = millis() + 2000;
+}
+
 void DC1::switchRelay(uint8_t ch, bool isOn, bool isSave)
 {
-    if (ch > channels)
+    if (ch >= channels)
     {
         Debug::AddInfo(PSTR("invalid channel: %d"), ch);
         return;
@@ -558,10 +812,15 @@ void DC1::switchRelay(uint8_t ch, bool isOn, bool isSave)
     powerStatTopic[strlen(powerStatTopic) - 1] = ch + 49; // 48 + 1 + ch
     Mqtt::publish(powerStatTopic, isOn ? "on" : "off", globalConfig.mqtt.retain);
 
-    if (isSave && config.power_on_state > 0)
+    if (isSave && (!relayStateValid || bitRead(rememberedState, ch) != isOn))
     {
-        bitWrite(config.last_state, ch, isOn);
-        bitSet(operationFlag, 0);
+        if (!relayStateValid) rememberedState = lastState;
+        bitWrite(rememberedState, ch, isOn);
+        relayStateValid = true;
+        if (config.power_on_state >= 2)
+        {
+            scheduleRelaySave();
+        }
     }
 
     if (ch == 0)
@@ -573,7 +832,7 @@ void DC1::switchRelay(uint8_t ch, bool isOn, bool isSave)
             {
                 if (isOn)
                 {
-                    if (bitRead(config.last_state, ch2))
+                    if (bitRead(rememberedState, ch2))
                     {
                         switchRelay(ch2, true, false);
                     }
@@ -633,84 +892,63 @@ void DC1::checkButton(uint8_t ch)
 
 void DC1::energyUpdate()
 {
-    if (Rtc::rtcTime.valid && config.energy_kWhtotal_time == 0)
+    if (Rtc::rtcTime.valid)
     {
-        config.energy_kWhtotal_time = Rtc::utcTime;
-        TIME_T tmpTime;
-        Rtc::breakTime(config.energy_kWhtotal_time, tmpTime);
-        snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"), tmpTime.year, tmpTime.month, tmpTime.day_of_month, tmpTime.hour, tmpTime.minute, tmpTime.second);
-    }
-    if (Rtc::rtcTime.valid && config.energy_kWhdoy != Rtc::rtcTime.day_of_year)
-    {
-        Debug::AddInfo(PSTR("day_of_year: %d %d %d"), Rtc::rtcTime.day_of_year, Rtc::rtcTime.day_of_month, Rtc::rtcTime.day_of_week);
-
-        energySync();
-        config.energy_kWhdoy = Rtc::rtcTime.day_of_year;
-        config.energy_kWhyesterday = config.energy_kWhtoday;
-        config.energy_kWhtoday = 0;
-        Config::saveConfig();
-
-        cse7766->Energy.daily = (float)(config.energy_kWhtoday + cse7766->Energy.kWhtoday) / 100000;
-        cse7766->Energy.total = (float)(config.energy_kWhtotal + cse7766->Energy.kWhtoday) / 100000;
+        if (energy.startTime == 0)
+        {
+            energy.startTime = Rtc::utcTime;
+            TIME_T tmpTime;
+            Rtc::breakTime(energy.startTime, tmpTime);
+            snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"), tmpTime.year, tmpTime.month, tmpTime.day_of_month, tmpTime.hour, tmpTime.minute, tmpTime.second);
+        }
+        energy.resolveLegacyDay(Rtc::rtcTime.days, Rtc::rtcTime.day_of_year,
+            LEAP_YEAR(Rtc::rtcTime.year - 1 - 1970) ? 366 : 365);
+        uint32_t previousDay = energy.day;
+        energy.updateDay(Rtc::rtcTime.days);
+        if (previousDay && previousDay != energy.day)
+        {
+            scheduleEnergySave();
+        }
     }
     if (cse7766->everySecond())
     {
         energyUpdateToday();
     }
-    if (perSecond % 21600 == 0 && cse7766->Energy.kWhtoday > 0)
-    {
-        energySync();
-        Config::saveConfig();
-    }
+    cse7766->Energy.daily = (float)energy.today / 100000;
+    cse7766->Energy.total = (float)energy.total / 100000;
     energyMarginCheck();
-}
-
-void DC1::energySync()
-{
-    if (cse7766->Energy.kWhtoday > 0)
-    {
-        config.energy_kWhtoday += cse7766->Energy.kWhtoday;
-        config.energy_kWhtotal += cse7766->Energy.kWhtoday;
-        cse7766->Energy.kWhtoday = 0;
-    }
 }
 
 void DC1::energyInit()
 {
     cse7766->Energy.kWhtoday = 0;
     cse7766->Energy.kWhtoday_delta = 0;
-    cse7766->Energy.daily = (float)(config.energy_kWhtoday) / 100000;
-    cse7766->Energy.total = (float)(config.energy_kWhtotal) / 100000;
+    cse7766->Energy.daily = (float)(energy.today) / 100000;
+    cse7766->Energy.total = (float)(energy.total) / 100000;
 
-    TIME_T tmpTime;
-    Rtc::breakTime(config.energy_kWhtotal_time, tmpTime);
-    snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"), tmpTime.year, tmpTime.month, tmpTime.day_of_month, tmpTime.hour, tmpTime.minute, tmpTime.second);
+    strcpy(kWhtotalTime, "--");
+    if (energy.startTime)
+    {
+        TIME_T tmpTime;
+        Rtc::breakTime(energy.startTime, tmpTime);
+        snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"), tmpTime.year, tmpTime.month, tmpTime.day_of_month, tmpTime.hour, tmpTime.minute, tmpTime.second);
+    }
 }
 
-void DC1::energyClear()
+bool DC1::energyClear()
 {
-    config.energy_kWhtoday = 0;
-    config.energy_kWhyesterday = 0;
-    config.energy_kWhtotal = 0;
-    config.energy_kWhdoy = 0;
-    config.energy_kWhtotal_time = 0;
-
-    cse7766->Energy.kWhtoday_delta = 0;
-
+    energy = EnergyState();
     energyInit();
-    Config::saveConfig();
+    return saveEnergy(true);
 }
 
 void DC1::energyUpdateToday()
 {
-    if (cse7766->Energy.kWhtoday_delta > 1000)
+    if (cse7766->Energy.kWhtoday_delta >= 1000)
     {
         unsigned long delta = cse7766->Energy.kWhtoday_delta / 1000;
-        cse7766->Energy.kWhtoday_delta -= (delta * 1000);
-        cse7766->Energy.kWhtoday += delta;
-
-        cse7766->Energy.daily = (float)(config.energy_kWhtoday + cse7766->Energy.kWhtoday) / 100000;
-        cse7766->Energy.total = (float)(config.energy_kWhtotal + cse7766->Energy.kWhtoday) / 100000;
+        cse7766->Energy.kWhtoday_delta %= 1000;
+        energy.add(delta);
     }
 }
 
@@ -914,7 +1152,7 @@ void DC1::energyShow(bool isMqtt)
     char energy_yesterday_chr[16];
     char energy_total_chr[16];
     Util::dtostrfd(cse7766->Energy.daily, energy_resolution, energy_daily_chr);
-    Util::dtostrfd((float)config.energy_kWhyesterday / 100000, energy_resolution, energy_yesterday_chr);
+    Util::dtostrfd((float)energy.yesterday / 100000, energy_resolution, energy_yesterday_chr);
     Util::dtostrfd(cse7766->Energy.total, energy_resolution, energy_total_chr);
 
     snprintf_P(tmpData, sizeof(tmpData),
