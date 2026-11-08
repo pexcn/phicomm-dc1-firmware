@@ -33,7 +33,7 @@ message HttpConfigMessage {
 	uint32 port = 1 [(nanopb).int_size = IS_16];
 	string user = 2 [(nanopb).max_size = 15]; 
 	string pass = 3 [(nanopb).max_size = 15]; 
-	string ota_url = 4 [(nanopb).max_size = 150]; 
+	reserved 4; // Retired remote-update field; never reuse this tag.
 }
 
 message MqttConfigMessage {

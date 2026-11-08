@@ -24,7 +24,6 @@ typedef struct _HttpConfigMessage {
     uint16_t port;
     char user[15];
     char pass[15];
-    char ota_url[150];
 } HttpConfigMessage;
 
 typedef struct _MqttConfigMessage {
@@ -65,12 +64,12 @@ extern "C" {
 /* Initializer values for message structs */
 #define GlobalConfigMessage_init_default         {WifiConfigMessage_init_default, HttpConfigMessage_init_default, MqttConfigMessage_init_default, DebugConfigMessage_init_default, 0, 0, {0, {0}}, ""}
 #define WifiConfigMessage_init_default           {"", "", 0, "", "", "", ""}
-#define HttpConfigMessage_init_default           {0, "", "", ""}
+#define HttpConfigMessage_init_default           {0, "", ""}
 #define MqttConfigMessage_init_default           {"", 0, "", "", 0, "", 0, "", 0}
 #define DebugConfigMessage_init_default          {0, "", 0}
 #define GlobalConfigMessage_init_zero            {WifiConfigMessage_init_zero, HttpConfigMessage_init_zero, MqttConfigMessage_init_zero, DebugConfigMessage_init_zero, 0, 0, {0, {0}}, ""}
 #define WifiConfigMessage_init_zero              {"", "", 0, "", "", "", ""}
-#define HttpConfigMessage_init_zero              {0, "", "", ""}
+#define HttpConfigMessage_init_zero              {0, "", ""}
 #define MqttConfigMessage_init_zero              {"", 0, "", "", 0, "", 0, "", 0}
 #define DebugConfigMessage_init_zero             {0, "", 0}
 
@@ -85,7 +84,6 @@ extern "C" {
 #define HttpConfigMessage_port_tag               1
 #define HttpConfigMessage_user_tag               2
 #define HttpConfigMessage_pass_tag               3
-#define HttpConfigMessage_ota_url_tag            4
 #define MqttConfigMessage_server_tag             1
 #define MqttConfigMessage_port_tag               2
 #define MqttConfigMessage_user_tag               3
@@ -138,8 +136,7 @@ X(a, STATIC,   SINGULAR, STRING,   ntp,               7)
 #define HttpConfigMessage_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   port,              1) \
 X(a, STATIC,   SINGULAR, STRING,   user,              2) \
-X(a, STATIC,   SINGULAR, STRING,   pass,              3) \
-X(a, STATIC,   SINGULAR, STRING,   ota_url,           4)
+X(a, STATIC,   SINGULAR, STRING,   pass,              3)
 #define HttpConfigMessage_CALLBACK NULL
 #define HttpConfigMessage_DEFAULT NULL
 
@@ -179,8 +176,8 @@ extern const pb_msgdesc_t DebugConfigMessage_msg;
 /* Maximum encoded size of messages (where known) */
 #define DebugConfigMessage_size                  48
 #define GLOBALCONFIG_PB_H_MAX_SIZE               GlobalConfigMessage_size
-#define GlobalConfigMessage_size                 1099
-#define HttpConfigMessage_size                   188
+#define GlobalConfigMessage_size                 946
+#define HttpConfigMessage_size                   36
 #define MqttConfigMessage_size                   177
 #define WifiConfigMessage_size                   143
 

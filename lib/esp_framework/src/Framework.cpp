@@ -18,12 +18,7 @@ void Framework::callback(char *topic, byte *payload, unsigned int length)
     cmnd++;
     payload[length] = 0;
 
-    if (strcmp(cmnd, "ota") == 0)
-    {
-        String str = String((char *)payload);
-        Http::OTA(str.endsWith(F(".bin")) ? str : OTA_URL);
-    }
-    else if (strcmp(cmnd, "restart") == 0)
+    if (strcmp(cmnd, "restart") == 0)
     {
         if (!Config::prepareRestart()) return;
         ESP.reset();

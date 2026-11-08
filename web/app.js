@@ -20,7 +20,6 @@ let relayBusy = false;
 let haveRelayState = false;
 let maintenanceBusy = false;
 let restarting = false;
-let restartLabel = '等待重启';
 let lastUpdate = '';
 let toastTimer = 0;
 let drawerFocus = null;
@@ -191,7 +190,7 @@ function setValues(data) {
 function setOnline(value) {
   online = value;
   $('#connection').classList.toggle('online', value);
-  $('#connection-label').textContent = value ? '设备在线' : restarting ? restartLabel : '连接中断';
+  $('#connection-label').textContent = value ? '设备在线' : restarting ? '等待重启' : '连接中断';
   document.body.classList.toggle('stale', !value);
   $$('[data-relay]').forEach((button) => {
     button.disabled = !value || !haveRelayState || relayBusy || maintenanceBusy;
@@ -402,13 +401,12 @@ function confirmAction(title, description, label = '确认') {
 $('#confirm-cancel').addEventListener('click', () => $('#confirm-dialog').close('cancel'));
 $('#confirm-ok').addEventListener('click', () => $('#confirm-dialog').close('confirm'));
 
-function markRestarting(message = '设备正在重启，待网络恢复后请刷新页面。', label = '等待重启') {
+function markRestarting() {
   restarting = true;
-  restartLabel = label;
   clearTimeout(timer);
   setOnline(false);
   $('#status-warning').hidden = false;
-  $('#status-warning').textContent = message;
+  $('#status-warning').textContent = '设备正在重启，待网络恢复后请刷新页面。';
   lockControls();
 }
 
@@ -442,16 +440,6 @@ $$('form:not(#upload-form)').forEach((form) => {
       )
         return;
     }
-    if (form.id === 'ota-form') {
-      if (
-        !(await confirmAction(
-          '通过 URL 升级固件？',
-          '请确认地址指向本项目的应用固件。升级期间保持设备供电。',
-          '开始升级'
-        ))
-      )
-        return;
-    }
     const data = formData(form);
     const submitted = data.toString();
     form.dataset.busy = '1';
@@ -464,12 +452,7 @@ $$('form:not(#upload-form)').forEach((form) => {
       form.dataset.baseline = submitted;
       dirtyStatus(form);
       toast(result.msg || '设置已保存。');
-      if (form.id === 'ota-form')
-        markRestarting(
-          '已提交 URL 升级请求，请等待设备完成更新后刷新页面；未重启时可重新打开页面检查运行日志。',
-          '升级处理中'
-        );
-      else if (form.id === 'module-form' && data.get('uid') !== config.fields.uid) markRestarting();
+      if (form.id === 'module-form' && data.get('uid') !== config.fields.uid) markRestarting();
       else schedulePoll(0);
     } catch (error) {
       toast(error.message, true);

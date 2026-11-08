@@ -100,6 +100,60 @@ static void testRestartPreparation()
     module = nullptr;
 }
 
+static void testRetiredConfigField()
+{
+    // A valid older configuration can exceed the new schema's encoded maximum.
+    Config::resetConfig();
+    auto fill = [](char *value, size_t size) { memset(value, 'x', size - 1); };
+    fill(globalConfig.wifi.ssid, sizeof(globalConfig.wifi.ssid));
+    fill(globalConfig.wifi.pass, sizeof(globalConfig.wifi.pass));
+    fill(globalConfig.wifi.ip, sizeof(globalConfig.wifi.ip));
+    fill(globalConfig.wifi.sn, sizeof(globalConfig.wifi.sn));
+    fill(globalConfig.wifi.gw, sizeof(globalConfig.wifi.gw));
+    fill(globalConfig.wifi.ntp, sizeof(globalConfig.wifi.ntp));
+    fill(globalConfig.mqtt.server, sizeof(globalConfig.mqtt.server));
+    fill(globalConfig.mqtt.user, sizeof(globalConfig.mqtt.user));
+    fill(globalConfig.mqtt.pass, sizeof(globalConfig.mqtt.pass));
+    fill(globalConfig.mqtt.topic, sizeof(globalConfig.mqtt.topic));
+    fill(globalConfig.mqtt.discovery_prefix, sizeof(globalConfig.mqtt.discovery_prefix));
+    fill(globalConfig.debug.server, sizeof(globalConfig.debug.server));
+    fill(globalConfig.uid, sizeof(globalConfig.uid));
+    globalConfig.module_cfg.size = sizeof(globalConfig.module_cfg.bytes);
+    memset(globalConfig.module_cfg.bytes, 0x5a, globalConfig.module_cfg.size);
+    auto expected = globalConfig;
+
+    uint8_t oldHttp[200], retired[149];
+    memset(retired, 'u', sizeof(retired));
+    HttpConfigMessage http = {};
+    http.port = 8080;
+    strcpy(http.user, "admin");
+    strcpy(http.pass, "secret");
+    auto submessage = pb_ostream_from_buffer(oldHttp, sizeof(oldHttp));
+    assert(pb_encode(&submessage, HttpConfigMessage_fields, &http));
+    assert(pb_encode_tag(&submessage, PB_WT_STRING, 4));
+    assert(pb_encode_string(&submessage, retired, sizeof(retired)));
+    uint8_t payload[1200];
+    auto stream = pb_ostream_from_buffer(payload, sizeof(payload));
+    assert(pb_encode(&stream, GlobalConfigMessage_fields, &globalConfig));
+    assert(pb_encode_tag(&stream, PB_WT_STRING, 2));
+    assert(pb_encode_string(&stream, oldHttp, submessage.bytes_written));
+    size_t size = stream.bytes_written;
+    assert(size > GlobalConfigMessage_size && size <= 1099); // Previous schema limit.
+    uint16_t crc = Config::crc16(payload, size);
+    uint8_t header[] = {uint8_t(GLOBAL_CFG_VERSION >> 8), uint8_t(GLOBAL_CFG_VERSION),
+        uint8_t(size >> 8), uint8_t(size), uint8_t(crc >> 8), uint8_t(crc)};
+    memcpy(flash.data() + CONFIG, header, sizeof(header));
+    memcpy(flash.data() + CONFIG + sizeof(header), payload, size);
+    memset(&globalConfig, 0, sizeof(globalConfig));
+    Config::readConfig();
+    assert(strcmp(globalConfig.wifi.ssid, expected.wifi.ssid) == 0);
+    assert(strcmp(globalConfig.mqtt.pass, expected.mqtt.pass) == 0);
+    assert(globalConfig.http.port == http.port && strcmp(globalConfig.http.user, http.user) == 0);
+    assert(strcmp(globalConfig.http.pass, http.pass) == 0);
+    assert(Config::saveConfig());
+    assert((unsigned(flash[CONFIG + 2]) << 8 | flash[CONFIG + 3]) <= GlobalConfigMessage_size);
+}
+
 static void testRuntimeStorage()
 {
     assert(!RuntimeStorage::begin());
@@ -262,6 +316,7 @@ int main()
 {
     testConfiguration();
     testRestartPreparation();
+    testRetiredConfigField();
     testRuntimeStorage();
     testCorruptRecordRecovery();
     testLegacyDecoding();

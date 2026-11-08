@@ -24,7 +24,6 @@ private:
     static void handleOperate();
     static void handleNotFound();
     static void handleModuleSetting();
-    static void handleOTA();
     static void handleGetStatus();
     static void handleUpdate();
     static bool prepareRestartOrError();
@@ -37,8 +36,6 @@ public:
     static void stop();
     static void loop();
     static bool captivePortal();
-
-    static void OTA(String url);
 };
 
 #endif

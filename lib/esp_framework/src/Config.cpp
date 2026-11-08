@@ -63,9 +63,6 @@ void Config::resetConfig()
 #ifdef MQTT_FULLTOPIC
     strcpy(globalConfig.mqtt.topic, MQTT_FULLTOPIC);
 #endif
-#ifdef OTA_URL
-    strcpy(globalConfig.http.ota_url, OTA_URL);
-#endif
     globalConfig.http.port = 80;
     globalConfig.debug.type = 1;
 
@@ -87,8 +84,10 @@ void Config::readConfig()
         uint16_t version = (data[0] << 8 | data[1]);
         len = (data[2] << 8 | data[3]);
         uint16_t crc = (data[4] << 8 | data[5]);
-        if (version == GLOBAL_CFG_VERSION && len <= GlobalConfigMessage_size
-            && len <= SPI_FLASH_SEC_SIZE - 6 && crc16(data + 6, len) == crc)
+        // Older schemas may contain retired fields beyond the current encoded
+        // maximum. Bound reads by the sector, then let Protobuf skip them.
+        if (version == GLOBAL_CFG_VERSION && len <= SPI_FLASH_SEC_SIZE - 6
+            && crc16(data + 6, len) == crc)
         {
             memset(&globalConfig, 0, sizeof(GlobalConfigMessage));
             pb_istream_t stream = pb_istream_from_buffer(data + 6, len);

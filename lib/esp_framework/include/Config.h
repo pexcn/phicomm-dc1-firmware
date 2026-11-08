@@ -26,8 +26,6 @@
 
 #define MQTT_FULLTOPIC "%module%/%hostname%/%prefix%/" // MQTT 主题格式
 
-#define OTA_URL "http://10.0.0.50/esp/%module%.bin"
-
 #define WEB_LOG_SIZE 4000  // Max number of characters in weblog
 #define BOOT_LOOP_OFFSET 5 // 开始恢复默认值之前的引导循环数 (0 = disable, 1..200 = 循环次数)
 

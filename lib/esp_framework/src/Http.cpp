@@ -2,8 +2,8 @@
 #include <flash_hal.h>
 #include <FS.h>
 #include "StreamString.h"
-#include <ESP8266HTTPClient.h>
-#include <ESP8266httpUpdate.h>
+#include <Updater.h>
+#include <WiFiUdp.h>
 #include "Http.h"
 #include "Module.h"
 #include "Rtc.h"
@@ -102,7 +102,6 @@ void Http::handleConfig()
     sendJsonField("static_netmask", globalConfig.wifi.sn);
     sendJsonField("static_gateway", globalConfig.wifi.gw);
     sendJsonField("ntp", globalConfig.wifi.ntp);
-    sendJsonField("ota_url", globalConfig.http.ota_url[0] ? globalConfig.http.ota_url : OTA_URL);
 #ifndef DISABLE_MQTT
     sendJsonField("mqtt_server", globalConfig.mqtt.server);
     sendJsonField("mqtt_username", globalConfig.mqtt.user);
@@ -418,19 +417,6 @@ void Http::handleOperate()
     ESP.restart();
 }
 
-void Http::handleOTA()
-{
-    if (!checkAuth())
-    {
-        return;
-    }
-    if (!argumentFits("ota_url", sizeof(globalConfig.http.ota_url))) return;
-    strcpy(globalConfig.http.ota_url, server->arg(F("ota_url")).c_str());
-    if (!prepareRestartOrError()) return;
-    server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"如果成功后设备会重启 . . . \"}"));
-    Http::OTA(String(globalConfig.http.ota_url));
-}
-
 void Http::handleNotFound()
 {
     if (captivePortal())
@@ -717,7 +703,6 @@ void Http::begin()
     server->on(F("/wifi"), handleWifi);
     server->on(F("/operate"), handleOperate);
     server->on(F("/module_setting"), handleModuleSetting);
-    server->on(F("/ota"), handleOTA);
     server->on(F("/get_status"), handleGetStatus);
     server->onNotFound(handleNotFound);
     handleUpdate();
@@ -868,31 +853,4 @@ bool Http::prepareRestartOrError()
     server->send_P(500, PSTR("application/json"),
         PSTR("{\"code\":0,\"msg\":\"保存失败，已取消重启或升级；请检查存储状态并恢复损坏记录。\"}"));
     return false;
-}
-
-void Http::OTA(String url)
-{
-    if (url.indexOf(F("%04d")) != -1)
-    {
-        url.replace(F("%04d"), String(ESP.getChipId() & 0x1fff));
-    }
-    else if (url.indexOf(F("%d")) != -1)
-    {
-        url.replace(F("%d"), String(ESP.getChipId()));
-    }
-    url.replace(F("%hostname%"), UID);
-    url.replace(F("%module%"), module ? module->getModuleName() : F(""));
-
-    if (!Config::prepareRestart())
-    {
-        Debug::AddError(PSTR("OTA cancelled: configuration save failed"));
-        return;
-    }
-    Debug::AddInfo(PSTR("OTA Url: %s"), url.c_str());
-    Led::blinkLED(200, 5);
-    WiFiClient OTAclient;
-    if (ESPhttpUpdate.update(OTAclient, url, (module ? module->getModuleVersion() : F(""))) == HTTP_UPDATE_FAILED)
-    {
-        Debug::AddError(PSTR("HTTP_UPDATE_FAILD Error (%d): %s"), ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-    }
 }
