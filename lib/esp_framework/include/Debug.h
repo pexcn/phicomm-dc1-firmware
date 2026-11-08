@@ -3,7 +3,6 @@
 #ifndef _DEBUG_h
 #define _DEBUG_h
 
-#include <ESP8266WiFi.h>
 #include "Config.h"
 
 enum LoggingLevels
@@ -28,10 +27,6 @@ public:
     static void GetLog(uint8_t idx, char **entry_pp, uint16_t *len_p);
 #endif
 
-#ifdef USE_SYSLOG
-    static IPAddress ip;
-    static void Syslog();
-#endif
     static void AddLog(uint8_t loglevel);
     static void AddLog(uint8_t loglevel, PGM_P formatP, ...);
 

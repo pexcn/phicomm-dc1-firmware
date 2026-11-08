@@ -50,6 +50,5 @@ message MqttConfigMessage {
 
 message DebugConfigMessage {
 	uint32 type = 1 [(nanopb).int_size = IS_8];
-	string server = 2 [(nanopb).max_size = 40];
-	uint32 port = 3 [(nanopb).int_size = IS_16];
+	reserved 2, 3; // Retired logging destination fields; never reuse.
 }

@@ -40,8 +40,6 @@ typedef struct _MqttConfigMessage {
 
 typedef struct _DebugConfigMessage {
     uint8_t type;
-    char server[40];
-    uint16_t port;
 } DebugConfigMessage;
 
 typedef PB_BYTES_ARRAY_T(500) GlobalConfigMessage_module_cfg_t;
@@ -66,12 +64,12 @@ extern "C" {
 #define WifiConfigMessage_init_default           {"", "", 0, "", "", "", ""}
 #define HttpConfigMessage_init_default           {0, "", ""}
 #define MqttConfigMessage_init_default           {"", 0, "", "", 0, "", 0, "", 0}
-#define DebugConfigMessage_init_default          {0, "", 0}
+#define DebugConfigMessage_init_default          {0}
 #define GlobalConfigMessage_init_zero            {WifiConfigMessage_init_zero, HttpConfigMessage_init_zero, MqttConfigMessage_init_zero, DebugConfigMessage_init_zero, 0, 0, {0, {0}}, ""}
 #define WifiConfigMessage_init_zero              {"", "", 0, "", "", "", ""}
 #define HttpConfigMessage_init_zero              {0, "", ""}
 #define MqttConfigMessage_init_zero              {"", 0, "", "", 0, "", 0, "", 0}
-#define DebugConfigMessage_init_zero             {0, "", 0}
+#define DebugConfigMessage_init_zero             {0}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define WifiConfigMessage_ssid_tag               1
@@ -94,8 +92,6 @@ extern "C" {
 #define MqttConfigMessage_discovery_prefix_tag   8
 #define MqttConfigMessage_interval_tag           9
 #define DebugConfigMessage_type_tag              1
-#define DebugConfigMessage_server_tag            2
-#define DebugConfigMessage_port_tag              3
 #define GlobalConfigMessage_wifi_tag             1
 #define GlobalConfigMessage_http_tag             2
 #define GlobalConfigMessage_mqtt_tag             3
@@ -154,9 +150,7 @@ X(a, STATIC,   SINGULAR, UINT32,   interval,          9)
 #define MqttConfigMessage_DEFAULT NULL
 
 #define DebugConfigMessage_FIELDLIST(X, a) \
-X(a, STATIC,   SINGULAR, UINT32,   type,              1) \
-X(a, STATIC,   SINGULAR, STRING,   server,            2) \
-X(a, STATIC,   SINGULAR, UINT32,   port,              3)
+X(a, STATIC,   SINGULAR, UINT32,   type,              1)
 #define DebugConfigMessage_CALLBACK NULL
 #define DebugConfigMessage_DEFAULT NULL
 
@@ -174,9 +168,9 @@ extern const pb_msgdesc_t DebugConfigMessage_msg;
 #define DebugConfigMessage_fields &DebugConfigMessage_msg
 
 /* Maximum encoded size of messages (where known) */
-#define DebugConfigMessage_size                  48
+#define DebugConfigMessage_size                  3
 #define GLOBALCONFIG_PB_H_MAX_SIZE               GlobalConfigMessage_size
-#define GlobalConfigMessage_size                 946
+#define GlobalConfigMessage_size                 901
 #define HttpConfigMessage_size                   36
 #define MqttConfigMessage_size                   177
 #define WifiConfigMessage_size                   143

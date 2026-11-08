@@ -100,7 +100,7 @@ static void testRestartPreparation()
     module = nullptr;
 }
 
-static void testRetiredConfigField()
+static void testRetiredConfigFields()
 {
     // A valid older configuration can exceed the new schema's encoded maximum.
     Config::resetConfig();
@@ -116,7 +116,6 @@ static void testRetiredConfigField()
     fill(globalConfig.mqtt.pass, sizeof(globalConfig.mqtt.pass));
     fill(globalConfig.mqtt.topic, sizeof(globalConfig.mqtt.topic));
     fill(globalConfig.mqtt.discovery_prefix, sizeof(globalConfig.mqtt.discovery_prefix));
-    fill(globalConfig.debug.server, sizeof(globalConfig.debug.server));
     fill(globalConfig.uid, sizeof(globalConfig.uid));
     globalConfig.module_cfg.size = sizeof(globalConfig.module_cfg.bytes);
     memset(globalConfig.module_cfg.bytes, 0x5a, globalConfig.module_cfg.size);
@@ -132,11 +131,22 @@ static void testRetiredConfigField()
     assert(pb_encode(&submessage, HttpConfigMessage_fields, &http));
     assert(pb_encode_tag(&submessage, PB_WT_STRING, 4));
     assert(pb_encode_string(&submessage, retired, sizeof(retired)));
+    uint8_t oldDebug[64];
+    DebugConfigMessage debug = {};
+    debug.type = 4;
+    auto logging = pb_ostream_from_buffer(oldDebug, sizeof(oldDebug));
+    assert(pb_encode(&logging, DebugConfigMessage_fields, &debug));
+    assert(pb_encode_tag(&logging, PB_WT_STRING, 2));
+    assert(pb_encode_string(&logging, retired, 39));
+    assert(pb_encode_tag(&logging, PB_WT_VARINT, 3));
+    assert(pb_encode_varint(&logging, 514));
     uint8_t payload[1200];
     auto stream = pb_ostream_from_buffer(payload, sizeof(payload));
     assert(pb_encode(&stream, GlobalConfigMessage_fields, &globalConfig));
     assert(pb_encode_tag(&stream, PB_WT_STRING, 2));
     assert(pb_encode_string(&stream, oldHttp, submessage.bytes_written));
+    assert(pb_encode_tag(&stream, PB_WT_STRING, 4));
+    assert(pb_encode_string(&stream, oldDebug, logging.bytes_written));
     size_t size = stream.bytes_written;
     assert(size > GlobalConfigMessage_size && size <= 1099); // Previous schema limit.
     uint16_t crc = Config::crc16(payload, size);
@@ -150,6 +160,7 @@ static void testRetiredConfigField()
     assert(strcmp(globalConfig.mqtt.pass, expected.mqtt.pass) == 0);
     assert(globalConfig.http.port == http.port && strcmp(globalConfig.http.user, http.user) == 0);
     assert(strcmp(globalConfig.http.pass, http.pass) == 0);
+    assert(globalConfig.debug.type == debug.type);
     assert(Config::saveConfig());
     assert((unsigned(flash[CONFIG + 2]) << 8 | flash[CONFIG + 3]) <= GlobalConfigMessage_size);
 }
@@ -316,7 +327,7 @@ int main()
 {
     testConfiguration();
     testRestartPreparation();
-    testRetiredConfigField();
+    testRetiredConfigFields();
     testRuntimeStorage();
     testCorruptRecordRecovery();
     testLegacyDecoding();

@@ -70,12 +70,6 @@ void Http::handleConfig()
 #ifdef WEB_LOG_SIZE
     server->sendContent_P(PSTR(",\"logs\":1"));
 #endif
-#ifdef USE_SYSLOG
-    server->sendContent_P(PSTR(",\"syslog\":1"));
-#endif
-#ifdef USE_HOMEKIT
-    server->sendContent_P(PSTR(",\"homekit\":1"));
-#endif
     server->sendContent_P(PSTR("},\"device\":{"));
     sendJsonField("uid", UID);
     sendJsonField("ssid", WiFi.SSID());
@@ -106,16 +100,12 @@ void Http::handleConfig()
     sendJsonField("mqtt_topic", globalConfig.mqtt.topic);
     sendJsonField("discovery_prefix", globalConfig.mqtt.discovery_prefix);
 #endif
-#ifdef USE_SYSLOG
-    sendJsonField("log_syslog_host", globalConfig.debug.server);
-#endif
     snprintf_P(tmpData, sizeof(tmpData),
         PSTR("\"dhcp\":%d,\"mqtt_port\":%u,\"interval\":%u,\"retain\":%d,"
-             "\"log_serial\":%d,\"log_serial1\":%d,\"log_web\":%d,\"log_syslog\":%d,"
-             "\"log_syslog_port\":%u},\"module\":"),
+             "\"log_serial\":%d,\"log_serial1\":%d,\"log_web\":%d},\"module\":"),
         globalConfig.wifi.is_static ? 2 : 1, globalConfig.mqtt.port, globalConfig.mqtt.interval,
         globalConfig.mqtt.retain, !!(globalConfig.debug.type & 1), !!(globalConfig.debug.type & 8),
-        !!(globalConfig.debug.type & 4), !!(globalConfig.debug.type & 2), globalConfig.debug.port);
+        !!(globalConfig.debug.type & 4));
     server->sendContent_P(tmpData);
     server->sendContent(module ? module->httpGetConfig() : String(F("{}")));
     server->sendContent_P(PSTR("}}"));
@@ -748,8 +738,7 @@ void Http::handleModuleSetting()
     }
 
     if (!argumentFits("uid", sizeof(UID))
-        || !argumentFits("ntp", sizeof(globalConfig.wifi.ntp))
-        || !argumentFits("log_syslog_host", sizeof(globalConfig.debug.server))) return;
+        || !argumentFits("ntp", sizeof(globalConfig.wifi.ntp))) return;
     int t = 0;
     if (server->arg(F("log_serial")).equals(F("1")))
     {
@@ -766,22 +755,6 @@ void Http::handleModuleSetting()
     }
 #endif
 
-#ifdef USE_SYSLOG
-    if (server->arg(F("log_syslog")).equals(F("1")))
-    {
-        t = t | 2;
-        String log_syslog_host = server->arg(F("log_syslog_host"));
-        String log_syslog_port = server->arg(F("log_syslog_port"));
-        if (log_syslog_host.length() == 0)
-        {
-            server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"syslog服务器不能为空\"}"));
-            return;
-        }
-        strcpy(globalConfig.debug.server, log_syslog_host.c_str());
-        globalConfig.debug.port = log_syslog_port.toInt();
-        WiFi.hostByName(globalConfig.debug.server, Debug::ip);
-    }
-#endif
 
     globalConfig.debug.type = t;
     if ((8 & globalConfig.debug.type) == 8)

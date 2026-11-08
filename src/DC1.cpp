@@ -4,9 +4,6 @@
 #include "RuntimeStorage.h"
 #include "Http.h"
 #include "Util.h"
-#ifdef USE_HOMEKIT
-#include "HomeKit.h"
-#endif
 
 static const uint32_t ENERGY_SAVE_INTERVAL_MS = 8UL * 60 * 60 * 1000;
 
@@ -357,9 +354,6 @@ void DC1::httpAdd(ESP8266WebServer *server)
     server->on(F("/dc1_setting"), std::bind(&DC1::httpSetting, this, server));
     server->on(F("/dc1_storage"), HTTP_POST, std::bind(&DC1::httpStorage, this, server));
     server->on(F("/ha"), std::bind(&DC1::httpHa, this, server));
-#ifdef USE_HOMEKIT
-    server->on(F("/homekit"), std::bind(&homekit_http, server));
-#endif
 }
 
 String DC1::httpGetStatus(ESP8266WebServer *server)

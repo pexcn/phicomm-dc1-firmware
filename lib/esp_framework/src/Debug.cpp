@@ -1,5 +1,3 @@
-#include <ESP8266WiFi.h>
-#include <WiFiUdp.h>
 #include "Config.h"
 #include "Debug.h"
 #include "Rtc.h"
@@ -8,11 +6,7 @@
 uint8_t Debug::webLogIndex = 1;
 char Debug::webLog[WEB_LOG_SIZE] = {'\0'};
 #endif
-#ifdef USE_SYSLOG
-IPAddress Debug::ip;
-#endif
 
-WiFiUDP Udp;
 size_t Debug::strchrspn(const char *str1, int character)
 {
     size_t ret = 0;
@@ -52,32 +46,6 @@ void Debug::GetLog(uint8_t idx, char **entry_pp, uint16_t *len_p)
 }
 #endif
 
-#ifdef USE_SYSLOG
-void Debug::Syslog()
-{
-    if ((2 & globalConfig.debug.type) != 2 || WiFi.status() != WL_CONNECTED || globalConfig.debug.server[0] == '\0' || globalConfig.debug.port == 0)
-    {
-        return;
-    }
-
-    if (!ip)
-    {
-        WiFi.hostByName(globalConfig.debug.server, ip);
-    }
-    if (Udp.beginPacket(ip, globalConfig.debug.port))
-    {
-        char syslog_preamble[64]; // Hostname + Id
-
-        snprintf_P(syslog_preamble, sizeof(syslog_preamble), PSTR("%s "), UID);
-        memmove(tmpData + strlen(syslog_preamble), tmpData, sizeof(tmpData) - strlen(syslog_preamble));
-        tmpData[sizeof(tmpData) - 1] = '\0';
-        memcpy(tmpData, syslog_preamble, strlen(syslog_preamble));
-        Udp.write(tmpData, strlen(tmpData));
-        Udp.endPacket();
-        delay(1); // Add time for UDP handling (#5512)
-    }
-}
-#endif
 
 void Debug::AddLog(uint8_t loglevel)
 {
@@ -115,9 +83,6 @@ void Debug::AddLog(uint8_t loglevel)
     }
 #endif
 
-#ifdef USE_SYSLOG
-    Syslog();
-#endif
 }
 
 void Debug::AddLog(uint8_t loglevel, PGM_P formatP, ...)
