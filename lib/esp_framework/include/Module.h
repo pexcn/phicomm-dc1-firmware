@@ -20,7 +20,6 @@ public:
     virtual String getModuleName();
     virtual String getModuleCNName();
     virtual String getModuleVersion();
-    virtual String getModuleAuthor();
 
     virtual bool moduleLed();
 
