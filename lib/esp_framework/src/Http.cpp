@@ -1,7 +1,4 @@
 #include <ESP8266WebServer.h>
-#include <flash_hal.h>
-#include <FS.h>
-#include "StreamString.h"
 #include <Updater.h>
 #include <WiFiUdp.h>
 #include "Http.h"
@@ -278,7 +275,6 @@ void Http::handleScanWifi()
     if (n == 0)
     {
         server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"\",\"data\":{\"list\":[]}}"));
-        //server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"找不到网络，请重新试试。\"}"));
         return;
     }
 
@@ -628,7 +624,6 @@ void Http::handleUpdate()
         {
             server->client().setNoDelay(true);
             server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"升级成功，设备将自动重启，稍后刷新页面即可。\"}"));
-            //server->send_P(200, PSTR("text/html"), PSTR("<meta charset='utf-8'/><meta http-equiv=\"refresh\" content=\"15;URL=/\">升级成功！正在重启 . . ."));
             delay(100);
             server->client().stop();
             ESP.restart();
@@ -737,7 +732,6 @@ bool Http::captivePortal()
 {
     if (!Wifi::isIp(server->hostHeader()))
     {
-        //Debug::AddInfo(PSTR("Request redirected to captive portal"));
         server->sendHeader(F("Location"), String(F("http://")) + server->client().localIP().toString(), true);
         server->send(302, F("text/plain"), ""); // Empty content inhibits Content-length header so we have to close the socket ourselves.
         server->client().stop();                // Stop is needed because we sent no content length

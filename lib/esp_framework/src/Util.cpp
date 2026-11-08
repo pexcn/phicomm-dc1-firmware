@@ -8,36 +8,6 @@ char *Util::strlowr(char *str)
     return orign;
 }
 
-char *Util::strupr(char *str)
-{
-    char *orign = str;
-    for (; *str != '\0'; str++)
-        *str = toupper(*str);
-    return orign;
-}
-
-uint16_t Util::hex2Str(uint8_t *bin, uint16_t bin_size, char *buff, bool needBlank)
-{
-    const char *set = "0123456789ABCDEF";
-    char *nptr = buff;
-    if (NULL == buff)
-    {
-        return -1;
-    }
-    uint16_t len = needBlank ? (bin_size * 2 + bin_size) : (bin_size * 2 + 1);
-    while (bin_size--)
-    {
-        *nptr++ = set[(*bin) >> 4];
-        *nptr++ = set[(*bin++) & 0xF];
-        if (needBlank && bin_size > 0)
-        {
-            *nptr++ = ' ';
-        }
-    }
-    *nptr = '\0';
-    return len;
-}
-
 char *Util::dtostrfd(double number, unsigned char prec, char *s)
 {
     if ((isnan(number)) || (isinf(number)))
@@ -79,14 +49,4 @@ uint32_t Util::RoundSqrtInt(uint32_t num)
         s++;
     }
     return s / 2;
-}
-
-bool Util::endWith(char *str, const char *suffix, uint16_t strLen)
-{
-    if (strLen == 0)
-    {
-        strLen = strlen(str);
-    }
-    size_t suffixLen = strlen(suffix);
-    return suffixLen <= strLen && strncmp(str + strLen - suffixLen, suffix, suffixLen) == 0 ? true : false;
 }

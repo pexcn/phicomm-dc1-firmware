@@ -51,7 +51,6 @@ void Mqtt::doReportHeartbeat()
     char message[250];
     sprintf(message, PSTR("{\"UID\":\"%s\",\"SSID\":\"%s\",\"RSSI\":\"%s\",\"Version\":\"%s\",\"ip\":\"%s\",\"mac\":\"%s\",\"freeMem\":%d,\"uptime\":%d}"),
             UID, WiFi.SSID().c_str(), String(WiFi.RSSI()).c_str(), (module ? module->getModuleVersion().c_str() : PSTR("0")), WiFi.localIP().toString().c_str(), WiFi.macAddress().c_str(), ESP.getFreeHeap(), millis() / 1000);
-    //Debug::AddInfo(PSTR("%s"), message);
     publish(getTeleTopic(F("HEARTBEAT")), message);
 }
 

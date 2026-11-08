@@ -103,9 +103,7 @@ void Framework::setup()
     Util::strlowr(UID);
 
     Debug::AddInfo(PSTR("UID: %s"), UID);
-    // Debug::AddInfo(PSTR("Config Len: %d"), GlobalConfigMessage_size + 6);
 
-    //Config::resetConfig();
     if (MQTT_MAX_PACKET_SIZE == 128)
     {
         Debug::AddError(PSTR("WRONG PUBSUBCLIENT LIBRARY USED PLEASE INSTALL THE ONE FROM OMG LIB FOLDER"));

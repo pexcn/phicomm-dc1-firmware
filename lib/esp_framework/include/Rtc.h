@@ -1,4 +1,4 @@
-// Ntp.h
+// Rtc.h
 
 #ifndef _NTP_h
 #define _NTP_h
@@ -44,7 +44,6 @@ public:
     static TIME_T rtcTime;
 
     static String msToHumanString(uint32_t const msecs);
-    static String timeSince(uint32_t const start);
 
     static String GetBuildDateAndTime();
     static void perSecondDo();

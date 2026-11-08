@@ -6,8 +6,6 @@
 
 WiFiClient Wifi::wifiClient;
 WiFiEventHandler Wifi::STAGotIP;
-//WiFiEventHandler Wifi::STADisconnected;
-bool Wifi::isDHCP = true;
 
 unsigned long Wifi::configPortalStart = 0;
 static bool restartPending = false;
@@ -48,24 +46,9 @@ void Wifi::setupWifi()
         connectStart = 0;
 #endif
         Debug::AddInfo(PSTR("WiFi1 connected. SSID: %s IP address: %s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-        if (globalConfig.wifi.is_static && String(globalConfig.wifi.ip).equals(WiFi.localIP().toString()))
-        {
-            isDHCP = false;
-        }
-        /*
-        STADisconnected = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &event) {
-            if (connectStart == 0)
-            {
-                connectStart = millis() + WIFI_CONNECT_TIMEOUT * 1000;
-            }
-            Debug::AddInfo(PSTR("onStationModeDisconnected"));
-            STADisconnected = NULL;
-        });
-        */
     });
     if (globalConfig.wifi.is_static)
     {
-        isDHCP = false;
         IPAddress static_ip;
         IPAddress static_sn;
         IPAddress static_gw;
@@ -93,8 +76,6 @@ void Wifi::setupWifiManager(bool resetSettings)
         Debug::AddInfo(PSTR("THIS MAY CAUSE AP NOT TO START UP PROPERLY. YOU NEED TO COMMENT IT OUT AFTER ERASING THE DATA."));
         WiFi.disconnect(true);
     }
-    //WiFi.setAutoConnect(true);
-    //WiFi.setAutoReconnect(true);
     WiFi.hostname(UID);
     STAGotIP = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &event) {
         Debug::AddInfo(PSTR("WiFi2 connected. SSID: %s IP address: %s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());

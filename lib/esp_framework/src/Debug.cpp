@@ -94,8 +94,6 @@ void Debug::AddLog(uint8_t loglevel)
     }
 
 #ifdef WEB_LOG_SIZE
-    //if (Settings.webserver && (loglevel <= Settings.weblog_level))
-    //{
     // Delimited, zero-terminated buffer of log lines.
     // Each entry has this format: [index][log data]['\1']
     if ((4 & globalConfig.debug.type) == 4 || loglevel == LOG_LEVEL_ERROR)

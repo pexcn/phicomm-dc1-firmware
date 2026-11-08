@@ -10,7 +10,7 @@
 
 static const uint32_t ENERGY_SAVE_INTERVAL_MS = 8UL * 60 * 60 * 1000;
 
-#pragma region 继承
+// 继承
 
 void DC1::init()
 {
@@ -120,9 +120,8 @@ void DC1::perSecondDo()
 {
     bitSet(operationFlag, 0);
 }
-#pragma endregion
 
-#pragma region 配置
+// 配置
 
 void DC1::readConfig()
 {
@@ -236,9 +235,8 @@ bool DC1::saveConfig()
     }
     return Config::moduleSaveConfig(MODULE_CFG_VERSION, DC1ConfigMessage_size, DC1ConfigMessage_fields, &config);
 }
-#pragma endregion
 
-#pragma region MQTT
+// MQTT
 
 void DC1::mqttCallback(char *topic, char *payload, char *cmnd)
 {
@@ -304,7 +302,6 @@ void DC1::mqttDiscovery(bool isEnable)
                     powerStatTopic,
                     availability.c_str());
             Mqtt::publish(topic, message, true);
-            //Debug::AddInfo(PSTR("discovery: %s - %s"), topic, message);
         }
         else
         {
@@ -338,7 +335,6 @@ void DC1::mqttDiscovery(bool isEnable)
                         UID, tims[i].c_str(), energy.c_str(), tims[i].c_str(), tims2[i].c_str());
             }
             Mqtt::publish(topic, message, true);
-            //Debug::AddInfo(PSTR("discovery: %s - %s"), topic, message);
         }
         else
         {
@@ -352,9 +348,8 @@ void DC1::mqttDiscovery(bool isEnable)
         reportEnergy();
     }
 }
-#pragma endregion
 
-#pragma region Http
+// Http
 
 void DC1::httpAdd(ESP8266WebServer *server)
 {
@@ -571,7 +566,6 @@ void DC1::httpHa(ESP8266WebServer *server)
         server->sendContent_P(tmpData);
     }
 }
-#pragma endregion
 
 void DC1::logoLed()
 {
@@ -861,10 +855,7 @@ void DC1::energyMarginCheck()
     }
 
     uint16_t energy_power_u = (uint16_t)(cse7766->Energy.active_power);
-    uint16_t energy_voltage_u = (uint16_t)(cse7766->Energy.voltage);
-    uint16_t energy_current_u = (uint16_t)(cse7766->Energy.current * 1000);
 
-    //Debug::AddInfo(PSTR("NRG: W %d, U %d, I %d"), energy_power_u, energy_voltage_u, energy_current_u);
     if (config.energy_power_delta)
     {
         uint16_t delta = abs(cse7766->Energy.power_history[0] - energy_power_u);

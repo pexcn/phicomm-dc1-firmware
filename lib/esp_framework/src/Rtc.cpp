@@ -21,7 +21,6 @@ String Rtc::GetBuildDateAndTime()
     int day = 0;
     int year = 0;
 
-    // sscanf(mdate, "%s %d %d", bdt, &day, &year);  // Not implemented in 2.3.0 and probably too much code
     uint8_t i = 0;
     for (char *str = strtok_r(mdate, " ", &p); str && i < 3; str = strtok_r(NULL, " ", &p))
     {
@@ -59,19 +58,6 @@ String Rtc::msToHumanString(uint32_t const msecs)
     char dt[16];
     snprintf_P(dt, sizeof(dt), PSTR("%dT%02d:%02d:%02d"), days, hours, minutes, seconds);
     return String(dt);
-}
-
-String Rtc::timeSince(uint32_t const start)
-{
-    if (start == 0)
-        return F("Never");
-    uint32_t diff = 0;
-    uint32_t now = millis();
-    if (start < now)
-        diff = now - start;
-    else
-        diff = UINT32_MAX - start + now;
-    return msToHumanString(diff) + F(" ago");
 }
 
 void Rtc::breakTime(uint32_t time_input, TIME_T &tm)
@@ -168,7 +154,6 @@ void Rtc::getNtp()
 
 void Rtc::perSecondDo()
 {
-    bool isAdd = false;
     if (utcTime == 0 || perSecond % 600 == 0)
     {
         bitSet(operationFlag, 0);
@@ -177,7 +162,6 @@ void Rtc::perSecondDo()
     {
         utcTime += 1;
         breakTime(utcTime, rtcTime);
-        //Debug::AddInfo(PSTR("Ticker: %04d-%02d-%02d %02d:%02d:%02d"), rtcTime.year, rtcTime.month, rtcTime.day_of_month, rtcTime.hour, rtcTime.minute, rtcTime.second);
     }
 }
 

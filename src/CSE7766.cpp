@@ -19,7 +19,6 @@ void CSE7766::cseReceived()
     uint8_t header = this->rawData[0];
     if ((header & 0xFC) == 0xFC)
     {
-        //Debug::AddInfo(PSTR("CSE: Abnormal hardware"));
         return;
     }
 
@@ -122,9 +121,6 @@ void CSE7766::loop()
             this->rawData[this->rawDataIndex++] = serial_in_byte;
             if (24 == this->rawDataIndex)
             {
-                //char strHex[100];
-                //hex2Str(this->rawData, 23, strHex, true);
-                //Debug::AddInfo(PSTR("CSE7766 Data: %s"), strHex);
                 uint8_t checksum = 0;
                 for (uint8_t i = 2; i < 23; i++)
                 {
@@ -231,7 +227,6 @@ bool CSE7766::everySecond()
                 }
                 else
                 {
-                    //Debug::AddInfo(PSTR("CSE: Load overflow"));
                     Cse.cf_pulses_last_time = CSE_PULSES_NOT_INITIALIZED;
                 }
                 //EnergyUpdateToday();
