@@ -43,7 +43,7 @@
 
 ## 拆机接线及烧录固件相关
 
-见[固件烧录](固件烧录.md)
+见[固件烧录](docs/flashing.md)
 
 烧录固件完成后,即可开始使用
 
@@ -63,6 +63,8 @@
 Visual Studio Code + PlatformIO ID 开发  [安装](https://www.jianshu.com/p/c36f8be8c87f)
 
 网页源码在 `web/`，使用原生 HTML、CSS、JavaScript，无外部库或 CDN。PlatformIO 编译时自动压缩并嵌入应用固件，不需要单独上传文件系统。桌面使用侧边导航，手机使用抽屉导航；浅色为绿色主题，深色为雾蓝灰，主题偏好只保存在浏览器。
+
+`src/` 是 DC1 设备逻辑，`lib/esp_framework/` 是仓库内维护的通用模块（配置、联网、Web、MQTT、日志与时钟），由 PlatformIO 自动发现和编译。`platformio.ini` 的 `lib_deps` 声明需要下载的外部依赖。修改配置协议后，运行 `python scripts/generate-protos.py` 更新生成文件；先执行 `pio pkg install` 安装依赖。
 
 ## 已支持接入的开源智能家居平台
 以下排序随机，不分优劣。合适自己的就好。
@@ -88,13 +90,6 @@ ioBroker相关接入问题可以加QQ群776817275咨询
 
 #### 接入方法
 添加对应的topic
-
-# 原版固件截图
-
-![image](https://github.com/qlwz/esp_dc1/blob/master/file/images/tab1.png)
-![image](https://github.com/qlwz/esp_dc1/blob/master/file/images/tab2.png)
-![image](https://github.com/qlwz/esp_dc1/blob/master/file/images/tab3.png)
-![image](https://github.com/qlwz/esp_dc1/blob/master/file/images/tab4.png)
 
 ## 致谢
 以下排名不分先后，为随机。
