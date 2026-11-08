@@ -9,14 +9,14 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v7.1.0
+        uses: actions/setup-python@v7
         with:
           python-version: '3.15'
 
@@ -33,7 +33,7 @@ jobs:
         run: echo "RELEASE_TAG=$(date +%Y%m%d)" >> $GITHUB_ENV
 
       - name: Upload to Releases
-        uses: softprops/action-gh-release@v3.0.4
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           files: .pio/build/dc1/firmware.bin
