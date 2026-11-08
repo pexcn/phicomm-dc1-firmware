@@ -2,9 +2,9 @@
 
 CSE7766::CSE7766(uint8_t rxPin, uint16_t baudrate)
 {
-    this->serial = new SoftwareSerial(rxPin, SW_SERIAL_UNUSED_PIN, false, 32);
+    this->serial = new SoftwareSerial();
+    this->serial->begin(baudrate, SWSERIAL_8N1, rxPin, -1, false, 32);
     this->serial->enableIntTx(false);
-    this->serial->begin(baudrate);
     Cse.power_invalid = CSE_MAX_INVALID_POWER;
 }
 

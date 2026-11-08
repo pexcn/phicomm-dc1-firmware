@@ -10,7 +10,7 @@
 #include "Arduino.h"
 #include "GlobalConfig.pb.h"
 
-#if PB_PROTO_HEADER_VERSION != 30
+#if PB_PROTO_HEADER_VERSION != 40
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
@@ -52,8 +52,8 @@ public:
     static bool saveConfig();
     static bool prepareRestart();
 
-    static bool moduleReadConfig(uint16_t version, uint16_t size, const pb_field_t fields[], void *dest_struct);
-    static bool moduleSaveConfig(uint16_t version, uint16_t size, const pb_field_t fields[], const void *src_struct);
+    static bool moduleReadConfig(uint16_t version, uint16_t size, const pb_msgdesc_t *fields, void *dest_struct);
+    static bool moduleSaveConfig(uint16_t version, uint16_t size, const pb_msgdesc_t *fields, const void *src_struct);
 
     static void loop();
 };

@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                         '-DLFS_NO_WARN', '-DLFS_NO_ERROR', '-I' + str(littlefs),
                         '-c', str(littlefs / (name + '.c')), '-o', obj], check=True)
         objects.append(obj)
-    command = ['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror', '-DPB_FIELD_16BIT=1',
+    command = ['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                '-no-pie', '-Wl,--defsym,_EEPROM_start=0x402fb000',
                '-Wl,--defsym,_RELAY_STATE_start=0x402fa000',
                '-Itests/host/stubs', '-Ilib/esp_framework/include', '-Iinclude',

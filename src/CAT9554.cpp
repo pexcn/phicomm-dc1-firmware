@@ -122,7 +122,7 @@ bool CAT9554::readConfig()
     return true;
 }
 
-void ICACHE_RAM_ATTR CAT9554::gpioIntr()
+void IRAM_ATTR CAT9554::gpioIntr()
 {
     CAT9554::updateGpio = true;
 }

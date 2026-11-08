@@ -197,7 +197,7 @@ void Config::loop()
     }
 }
 
-bool Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_field_t fields[], void *dest_struct)
+bool Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_msgdesc_t *fields, void *dest_struct)
 {
     if (globalConfig.module_cfg.size == 0                                                                         // 没有数据
         || globalConfig.cfg_version != version                                                                    // 版本不一致
@@ -227,7 +227,7 @@ bool Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_field_t 
     return status;
 }
 
-bool Config::moduleSaveConfig(uint16_t version, uint16_t size, const pb_field_t fields[], const void *src_struct)
+bool Config::moduleSaveConfig(uint16_t version, uint16_t size, const pb_msgdesc_t *fields, const void *src_struct)
 {
     uint8_t buffer[size];
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));

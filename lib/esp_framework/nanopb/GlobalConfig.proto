@@ -3,6 +3,9 @@ syntax = "proto3";
 
 import "nanopb.proto";
 
+// Keep the pre-0.4 singular-message layout and wire encoding.
+option (nanopb_fileopt).proto3_singular_msgs = true;
+
 message GlobalConfigMessage {
     WifiConfigMessage wifi = 1;
     HttpConfigMessage http = 2;
