@@ -40,7 +40,7 @@ void Wifi::setupWifi()
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
     WiFi.hostname(UID);
-    Debug::AddInfo(PSTR("Connecting to %s %s Wifi"), globalConfig.wifi.ssid, globalConfig.wifi.pass);
+    Debug::AddInfo(PSTR("Connecting to Wi-Fi: %s"), globalConfig.wifi.ssid);
     STAGotIP = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &event) {
 #ifdef WIFI_CONNECT_TIMEOUT
         connectStart = 0;
