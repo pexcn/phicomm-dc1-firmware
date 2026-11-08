@@ -48,7 +48,9 @@
   --warning-bg: #3b342a;
   --shadow: 0 12px 36px #0002;
 }
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 [hidden] {
@@ -485,7 +487,8 @@ small {
 }
 .switch::before {
   content: '';
-  display: block;
+  position: absolute;
+  inset: 6px 0;
   height: 32px;
   border-radius: 16px;
   border: 2px solid var(--muted);
@@ -494,28 +497,24 @@ small {
 .switch::after {
   content: '';
   position: absolute;
-  top: 14px;
-  left: 8px;
-  width: 16px;
-  height: 16px;
+  top: 10px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
   background: var(--muted);
   border-radius: 50%;
   transition:
     transform 160ms ease,
-    width 160ms ease,
-    height 160ms ease,
-    top 160ms ease;
+    background 160ms ease;
 }
 .switch[aria-checked='true']::before {
   background: var(--accent);
   border-color: var(--accent);
 }
 .switch[aria-checked='true']::after {
-  top: 10px;
-  width: 24px;
-  height: 24px;
-  background: var(--on-accent);
-  transform: translateX(16px);
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+  transform: translateX(20px);
 }
 .switch:hover:not(:disabled)::before {
   box-shadow: 0 0 0 6px var(--soft);
