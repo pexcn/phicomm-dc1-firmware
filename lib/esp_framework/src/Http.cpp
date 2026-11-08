@@ -1,5 +1,5 @@
 #include <ESP8266WebServer.h>
-#include <Updater.h>
+#include "FirmwareUpload.h"
 #include <WiFiUdp.h>
 #include "Http.h"
 #include "Module.h"
@@ -77,6 +77,7 @@ void Http::handleConfig()
     sendJsonField("wifi_mode", WiFi.getMode() == WIFI_STA ? F("STA") : WiFi.getMode() == WIFI_AP ? F("AP") : F("AP + STA"));
     sendJsonField("version", module ? module->getModuleVersion() : F("修复模式"));
     sendJsonField("build_time", Rtc::GetBuildDateAndTime());
+    sendJsonField("firmware_id", F(FIRMWARE_ID));
     sendJsonField("core_sdk", String(ARDUINO_ESP8266_RELEASE) + F(" / ") + ESP.getSdkVersion());
     sendJsonField("reset_reason", ESP.getResetReason());
     sendJsonField("mac", WiFi.macAddress());
@@ -557,6 +558,8 @@ void Http::handleUpdate()
     static bool uploadAllowed = false;
     static bool uploadComplete = false;
     static bool uploadSaveFailed = false;
+    static bool uploadImageFailed = false;
+    static FirmwareUpload firmware;
     // handler for the /update form POST (once file upload finishes)
     server->on(
         F("/update"), HTTP_POST, [&]() {
@@ -564,12 +567,20 @@ void Http::handleUpdate()
         {
             return;
         } 
-        bool complete = uploadAllowed && uploadComplete;
+        bool complete = uploadAllowed && uploadComplete && !uploadImageFailed;
         bool saveFailed = uploadSaveFailed;
-        uploadAllowed = uploadComplete = uploadSaveFailed = false;
+        bool imageFailed = uploadImageFailed;
+        if (complete && !firmware.finish()) imageFailed = true;
+        if (!complete) firmware.cancel();
+        uploadAllowed = uploadComplete = uploadSaveFailed = uploadImageFailed = false;
         if (saveFailed)
         {
             server->send_P(500, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"运行数据保存失败，固件升级未开始；请检查或恢复记录。\"}"));
+            return;
+        }
+        if (imageFailed)
+        {
+            server->send_P(400, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"固件不匹配、缺少校验信息或文件损坏，已拒绝升级。请使用本项目新版 Release 的 .bin 文件。\"}"));
             return;
         }
         if (!complete && !Update.hasError())
@@ -621,7 +632,8 @@ void Http::handleUpdate()
                 HTTPUpload &upload = server->upload();
                 if (upload.status == UPLOAD_FILE_START)
                 {
-                    uploadAllowed = uploadComplete = uploadSaveFailed = false;
+                    uploadAllowed = uploadComplete = uploadSaveFailed = uploadImageFailed = false;
+                    firmware.cancel();
                     if (globalConfig.http.user[0] != 0 && globalConfig.http.pass[0] != 0 && server->client().localIP().toString() != "192.168.4.1" && !server->authenticate(globalConfig.http.user, globalConfig.http.pass))
                     {
                         Debug::AddInfo(PSTR("Unauthenticated Update"));
@@ -635,25 +647,24 @@ void Http::handleUpdate()
                     WiFiUDP::stopAll();
                     Debug::AddInfo(PSTR("Update: %s"), upload.filename.c_str());
                     uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-                    uploadAllowed = Update.begin(maxSketchSpace, U_FLASH);
+                    uploadAllowed = firmware.begin(maxSketchSpace);
                 }
-                else if (upload.status == UPLOAD_FILE_WRITE && uploadAllowed && !Update.hasError())
+                else if (upload.status == UPLOAD_FILE_WRITE && uploadAllowed && !uploadImageFailed && !Update.hasError())
                 {
-                    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
+                    if (!firmware.write(upload.buf, upload.currentSize))
                     {
+                        uploadImageFailed = true;
+                        firmware.cancel();
                     }
                 }
                 else if (upload.status == UPLOAD_FILE_END && uploadAllowed && !Update.hasError())
                 {
-                    uploadComplete = Update.end(true);
-                    if (uploadComplete)
-                    { 
-                        Debug::AddInfo(PSTR("Update Success: %u   Rebooting..."), upload.totalSize);
-                    }
+                    uploadComplete = !uploadImageFailed;
+                    // Finalize only after the authenticated POST handler accepts the upload.
                 }
                 else if (upload.status == UPLOAD_FILE_ABORTED)
                 {
-                    if (uploadAllowed) Update.end();
+                    firmware.cancel();
                     uploadAllowed = uploadComplete = false;
                     Debug::AddInfo(PSTR("Update was aborted"));
                 }

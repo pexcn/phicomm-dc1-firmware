@@ -4,6 +4,9 @@ from pathlib import Path
 import subprocess
 import os
 import tempfile
+import hashlib
+import re
+import struct
 
 root = Path(__file__).resolve().parents[2]
 nanopb = root / '.pio/libdeps/dc1/Nanopb'
@@ -32,6 +35,22 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                str(nanopb / 'pb_decode.c'), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Check the published binary envelope and the streaming activation gate.
+firmware = root / '.pio/build/dc1/firmware.bin'
+image = firmware.read_bytes()
+identity, size, digest = struct.unpack('<32sI32s', image[-68:])
+header = (root / 'lib/esp_framework/include/FirmwareUpload.h').read_text()
+expected_id = re.search(r'^#define FIRMWARE_ID "([^"]+)"', header, re.MULTILINE).group(1).encode()
+assert identity.rstrip(b'\0') == expected_id and size == len(image) - 68
+assert hashlib.md5(image[:size]).hexdigest().encode() == digest
+assert (root / 'output/dc1.bin').read_bytes() == image
+with tempfile.TemporaryDirectory(prefix='dc1-ota-tests-') as build:
+    binary = str(Path(build) / 'firmware')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-Itests/host/ota', '-Ilib/esp_framework/include',
+                    'tests/host/ota/firmware.cpp', '-o', binary], cwd=root, check=True)
+    subprocess.run([binary, str(firmware)], check=True)
+print('PASS: firmware identity, checksum, chunk boundaries, corruption and aborted uploads')
 # Check the linked image, not just the declarations in the linker script.
 elf = root / '.pio/build/dc1/firmware.elf'
 nm = core / 'packages/toolchain-xtensa/bin/xtensa-lx106-elf-nm'

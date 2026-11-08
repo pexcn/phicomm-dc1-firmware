@@ -608,6 +608,21 @@ $('#upload-form').addEventListener('submit', async (event) => {
     toast('请选择非空的 .bin 应用固件。', true);
     return;
   }
+  try {
+    const trailer = await file.slice(-68).arrayBuffer();
+    const identity = new TextDecoder().decode(trailer.slice(0, 32)).replace(/\0+$/, '');
+    if (
+      trailer.byteLength !== 68 ||
+      identity !== config.device.firmware_id ||
+      new DataView(trailer).getUint32(32, true) !== file.size - 68
+    ) {
+      toast('固件不匹配或缺少校验信息，请选择本项目新版 Release 的 .bin 文件。', true);
+      return;
+    }
+  } catch {
+    toast('无法读取固件文件，请重新选择。', true);
+    return;
+  }
   if (
     !(await confirmAction(
       '上传并升级固件？',
