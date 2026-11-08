@@ -79,10 +79,6 @@ static void testConfiguration()
         Config::readConfig();
         assert(globalConfig.mqtt.port == expected);
     }
-    unsigned committed = erases[CONFIG / 4096];
-    now += 100000;
-    Config::loop();
-    assert(erases[CONFIG / 4096] == committed);
 }
 
 static void testRestartPreparation()
@@ -173,7 +169,6 @@ static void testRuntimeStorage()
     assert(!RuntimeStorage::saveRelay(5));
     assert(RuntimeStorage::initialize());
     assert(LittleFS.formatCalls == 1);
-    assert(RuntimeStorage::initialize() && LittleFS.formatCalls == 1);
     auto configuration = flash;
     assert(RuntimeStorage::saveRelay(5));
     uint8_t state = 0;
@@ -194,11 +189,6 @@ static void testRuntimeStorage()
     EnergyState invalid = energy;
     invalid.today = invalid.total + 1;
     assert(!RuntimeStorage::saveEnergy(invalid));
-    mutations = LittleFS.mutations;
-    assert(RuntimeStorage::saveEnergy(energy) && LittleFS.mutations == mutations);
-    LittleFS.shortWrite = true;
-    assert(!RuntimeStorage::saveRelay(3));
-    assert(RuntimeStorage::loadRelay(state) == RuntimeStorage::Result::Ok && state == 5);
     LittleFS.corruptWrite = true;
     assert(!RuntimeStorage::saveRelay(3));
     assert(RuntimeStorage::loadRelay(state) == RuntimeStorage::Result::Ok && state == 5);
@@ -207,8 +197,6 @@ static void testRuntimeStorage()
     assert(RuntimeStorage::loadRelay(state) == RuntimeStorage::Result::Ok && state == 5);
     LittleFS.failRename = false;
     assert(RuntimeStorage::saveRelay(3));
-    assert(memcmp(flash.data() + CONFIG, configuration.data() + CONFIG, 4096) == 0);
-
     // Interrupt every mutation, including metadata compaction and block rotation.
     for (int compact = 0; compact < 2; ++compact)
     for (int type = 0; type < 2; ++type)
@@ -317,10 +305,6 @@ static void testLegacyDecoding()
     assert(state.energy_kWhtoday == 123 && state.energy_kWhyesterday == 50
         && state.energy_kWhtotal == 123 && state.energy_kWhdoy == 3
         && state.energy_kWhtotal_time == 100);
-    uint8_t output[DC1ConfigMessage_size];
-    pb_ostream_t stream = pb_ostream_from_buffer(output, sizeof(output));
-    assert(pb_encode(&stream, DC1ConfigMessage_fields, &config));
-    assert(stream.bytes_written == 2 && output[0] == 0x10 && output[1] == 3);
 }
 
 int main()

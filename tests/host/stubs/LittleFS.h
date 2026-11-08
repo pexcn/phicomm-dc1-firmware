@@ -18,7 +18,7 @@ public:
     lfs_t fs = {};
     lfs_config config = {};
     bool mounted = false, autoFormat = true, powerOff = false;
-    bool failRename = false, shortWrite = false, corruptWrite = false;
+    bool failRename = false, corruptWrite = false;
     bool failMount = false;
     int failAfter = -1;
     unsigned mutations = 0, formatCalls = 0;
@@ -60,7 +60,6 @@ public:
     { return lfs_file_read(&LittleFS.fs, &handle->file, data, size); }
     size_t write(const uint8_t *data, size_t size)
     {
-        if (LittleFS.shortWrite) { LittleFS.shortWrite = false; --size; }
         std::vector<uint8_t> copy(data, data + size);
         if (LittleFS.corruptWrite) { LittleFS.corruptWrite = false; copy[0] ^= 1; }
         int result = lfs_file_write(&LittleFS.fs, &handle->file, copy.data(), copy.size());

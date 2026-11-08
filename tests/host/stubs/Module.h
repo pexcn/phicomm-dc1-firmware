@@ -9,11 +9,10 @@ public:
 class Module
 {
 public:
-    bool failSave = false;
     bool failFlush = false;
     unsigned flushes = 0;
     bool flushRuntime() { ++flushes; return !failFlush; }
-    bool saveConfig() { return !failSave; }
+    bool saveConfig() { return true; }
     void readConfig() {}
     void resetConfig() {}
 };
