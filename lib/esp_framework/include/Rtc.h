@@ -35,10 +35,10 @@ class Rtc
 protected:
     static uint32_t rtcRebootCrc;
     static uint8_t operationFlag;
-    static void getNtp();
+    static void updateClock();
 
 public:
-    static void breakTime(uint32_t time_input, TIME_T &tm);
+    static void breakTime(uint32_t time_input, TIME_T &tm, bool local = true);
     static uint32_t utcTime;
     static RtcReboot rtcReboot;
     static TIME_T rtcTime;

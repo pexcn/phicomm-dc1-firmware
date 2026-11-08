@@ -13,7 +13,8 @@ const char *TEMP_PATH = "/runtime.tmp";
 const size_t RELAY_SIZE = 12;
 const size_t ENERGY_SIZE = 44;
 const uint32_t RELAY_MAGIC = 0x44435201;
-const uint32_t ENERGY_MAGIC = 0x44434501;
+const uint32_t ENERGY_MAGIC_V1 = 0x44434501;
+const uint32_t ENERGY_MAGIC = 0x44434502;
 
 void put(uint8_t *data, uint64_t value, size_t size)
 {
@@ -44,11 +45,14 @@ RuntimeStorage::Result read(const char *path, uint8_t *data, size_t size, uint32
     if (!file || file.size() != size || file.read(data, size) != int(size))
         return RuntimeStorage::Result::Invalid;
     file.close();
-    if (get(data, 4) != magic || get(data + size - 4, 4) != checksum(data, size - 4))
+    bool energyRecord = magic == ENERGY_MAGIC || magic == ENERGY_MAGIC_V1;
+    bool matchingMagic = get(data, 4) == magic || (energyRecord
+        && (get(data, 4) == ENERGY_MAGIC || get(data, 4) == ENERGY_MAGIC_V1));
+    if (!matchingMagic || get(data + size - 4, 4) != checksum(data, size - 4))
         return RuntimeStorage::Result::Invalid;
     if (magic == RELAY_MAGIC && get(data + 4, 4) > 15)
         return RuntimeStorage::Result::Invalid;
-    if (magic == ENERGY_MAGIC && (get(data + 4, 8) > get(data + 20, 8)
+    if (energyRecord && (get(data + 4, 8) > get(data + 20, 8)
         || get(data + 12, 8) > get(data + 20, 8)
         || (get(data + 36, 4) != UINT32_MAX && get(data + 36, 4) > 365)))
         return RuntimeStorage::Result::Invalid;
@@ -123,6 +127,7 @@ RuntimeStorage::Result RuntimeStorage::loadEnergy(EnergyState &energy)
     Result result = read(ENERGY_PATH, data, sizeof(data), ENERGY_MAGIC);
     if (result != Result::Ok) return result;
     EnergyState loaded;
+    loaded.utcDay = get(data, 4) == ENERGY_MAGIC_V1;
     loaded.today = get(data + 4, 8);
     loaded.yesterday = get(data + 12, 8);
     loaded.total = get(data + 20, 8);
@@ -143,7 +148,7 @@ bool RuntimeStorage::saveEnergy(const EnergyState &energy, bool recover)
     put(data + 28, energy.day, 4);
     put(data + 32, energy.startTime, 4);
     put(data + 36, energy.legacyDay, 4);
-    return write(ENERGY_PATH, data, sizeof(data), ENERGY_MAGIC, recover);
+    return write(ENERGY_PATH, data, sizeof(data), energy.utcDay ? ENERGY_MAGIC_V1 : ENERGY_MAGIC, recover);
 }
 
 // Compatibility only: the previous relay sector is never written again.

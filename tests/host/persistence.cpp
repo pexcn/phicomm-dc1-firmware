@@ -186,6 +186,25 @@ static void testRuntimeStorage()
     assert(RuntimeStorage::loadEnergy(restored) == RuntimeStorage::Result::Ok);
     assert(restored.total == energy.total && restored.day == energy.day
         && restored.startTime == energy.startTime);
+    // Upgrade UTC-day snapshots once, retain usage, and survive a reboot.
+    EnergyState legacy = energy;
+    legacy.utcDay = true;
+    legacy.legacyDay = 100;
+    legacy.day = 0;
+    legacy.resolveLegacyDay(20000, 100, 365);
+    assert(RuntimeStorage::saveEnergy(legacy));
+    assert(RuntimeStorage::loadEnergy(restored) == RuntimeStorage::Result::Ok && restored.utcDay);
+    restored.useLocalDay(20000, 20001);
+    restored.updateDay(20001);
+    assert(restored.today == legacy.today && restored.total == legacy.total);
+    assert(RuntimeStorage::saveEnergy(restored));
+    assert(RuntimeStorage::loadEnergy(restored) == RuntimeStorage::Result::Ok && !restored.utcDay);
+    restored.useLocalDay(20000, 20001);
+    restored.updateDay(20000); // Backward clock corrections must not clear usage.
+    assert(restored.day == 20001 && restored.today == legacy.today);
+    restored.updateDay(20002);
+    assert(restored.today == 0 && restored.yesterday == legacy.today && restored.total == legacy.total);
+    assert(RuntimeStorage::saveEnergy(energy));
     EnergyState invalid = energy;
     invalid.today = invalid.total + 1;
     assert(!RuntimeStorage::saveEnergy(invalid));

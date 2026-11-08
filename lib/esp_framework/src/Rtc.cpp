@@ -1,6 +1,8 @@
 #include <ESP8266WiFi.h>
 #include "Rtc.h"
 #include "sntp.h"
+#include <coredecls.h>
+#include <time.h>
 #include "Debug.h"
 
 RtcReboot Rtc::rtcReboot;
@@ -8,6 +10,13 @@ uint32_t Rtc::rtcRebootCrc = 0;
 TIME_T Rtc::rtcTime;
 uint32_t Rtc::utcTime;
 uint8_t Rtc::operationFlag = 0;
+namespace {
+const uint32_t SYNC_WARNING_MS = 24UL * 60 * 60 * 1000;
+uint32_t lastSyncAt = 0;
+uint32_t lastClockAt = 0;
+bool synced = false;
+bool syncWarning = false;
+}
 static const uint8_t kDaysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}; // API starts months from 1, this array starts from 0
 static const char kMonthNamesEnglish[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
 
@@ -60,7 +69,7 @@ String Rtc::msToHumanString(uint32_t const msecs)
     return String(dt);
 }
 
-void Rtc::breakTime(uint32_t time_input, TIME_T &tm)
+void Rtc::breakTime(uint32_t time_input, TIME_T &tm, bool local)
 {
     // break the given time_input into time components
     // this is a more compact version of the C library localtime function
@@ -72,7 +81,7 @@ void Rtc::breakTime(uint32_t time_input, TIME_T &tm)
     uint32_t time;
     unsigned long days;
 
-    time = time_input;
+    time = time_input + (local ? 8UL * 3600 : 0); // UTC+8 calendar, UTC timestamps on disk.
     tm.second = time % 60;
     time /= 60; // now it is minutes
     tm.minute = time % 60;
@@ -134,39 +143,55 @@ void Rtc::loop()
     if (bitRead(operationFlag, 0))
     {
         bitClear(operationFlag, 0);
-        getNtp();
+        updateClock();
+        if (!syncWarning && millis() - lastSyncAt >= SYNC_WARNING_MS)
+        {
+            Debug::AddError(PSTR("NTP: no successful sync for 24 hours"));
+            syncWarning = true;
+        }
     }
 }
 
-void Rtc::getNtp()
+void Rtc::updateClock()
 {
-    if (WiFi.status() == WL_CONNECTED)
+    // time() is the continuously maintained system clock, not a network request.
+    uint32_t now = time(nullptr);
+    if (now > 1451602800)
     {
-        uint32_t ntp_time = sntp_get_current_timestamp();
-        if (ntp_time > 1451602800)
-        {
-            utcTime = ntp_time;
-            breakTime(utcTime, rtcTime);
-            Debug::AddInfo(PSTR("NTP: %04d-%02d-%02d %02d:%02d:%02d"), rtcTime.year, rtcTime.month, rtcTime.day_of_month, rtcTime.hour, rtcTime.minute, rtcTime.second);
-        }
+        utcTime = now;
+        lastClockAt = millis();
+        breakTime(utcTime, rtcTime);
     }
 }
 
 void Rtc::perSecondDo()
 {
-    if (utcTime == 0 || perSecond % 600 == 0)
-    {
-        bitSet(operationFlag, 0);
-    }
-    if (utcTime > 0)
-    {
-        utcTime += 1;
-        breakTime(utcTime, rtcTime);
-    }
+    // Keep calendar work and logging out of the Ticker callback.
+    bitSet(operationFlag, 0);
 }
 
 void Rtc::init()
 {
+    utcTime = 0;
+    rtcTime = {};
+    synced = syncWarning = false;
+    lastSyncAt = millis();
+    settimeofday_cb([](bool fromSntp) {
+        if (!fromSntp) return;
+        uint32_t previous = utcTime;
+        if (previous != 0) previous += (millis() - lastClockAt) / 1000;
+        updateClock();
+        if (!rtcTime.valid) return;
+        int64_t correction = int64_t(utcTime) - previous;
+        if (!synced || syncWarning || correction >= 5 || correction <= -5)
+            Debug::AddInfo(PSTR("NTP %s: %04d-%02d-%02d %02d:%02d:%02d (UTC+8)"),
+                !synced ? "synced" : syncWarning ? "recovered" : "adjusted",
+                rtcTime.year, rtcTime.month, rtcTime.day_of_month,
+                rtcTime.hour, rtcTime.minute, rtcTime.second);
+        synced = true;
+        syncWarning = false;
+        lastSyncAt = millis();
+    });
     sntp_stop();
     if (globalConfig.wifi.ntp[0] != '\0')
     {
@@ -182,7 +207,6 @@ void Rtc::init()
     }
     sntp_set_timezone(8);
     sntp_init();
-    utcTime = 0;
 }
 
 uint32_t Rtc::getRtcRebootCrc()

@@ -165,6 +165,7 @@ void DC1::readRuntime(bool valid)
         {
             if (valid)
             {
+                energy.utcDay = true;
                 energy.today = legacy.energy_kWhtoday;
                 energy.yesterday = legacy.energy_kWhyesterday;
                 energy.total = legacy.energy_kWhtotal;
@@ -789,11 +790,15 @@ void DC1::energyUpdate()
             Rtc::breakTime(energy.startTime, tmpTime);
             snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"), tmpTime.year, tmpTime.month, tmpTime.day_of_month, tmpTime.hour, tmpTime.minute, tmpTime.second);
         }
-        energy.resolveLegacyDay(Rtc::rtcTime.days, Rtc::rtcTime.day_of_year,
-            LEAP_YEAR(Rtc::rtcTime.year - 1 - 1970) ? 366 : 365);
+        TIME_T utcCalendar;
+        Rtc::breakTime(Rtc::utcTime, utcCalendar, false);
+        energy.resolveLegacyDay(utcCalendar.days, utcCalendar.day_of_year,
+            LEAP_YEAR(utcCalendar.year - 1 - 1970) ? 366 : 365);
+        bool migrated = energy.utcDay;
+        energy.useLocalDay(utcCalendar.days, Rtc::rtcTime.days);
         uint32_t previousDay = energy.day;
         energy.updateDay(Rtc::rtcTime.days);
-        if (previousDay && previousDay != energy.day)
+        if (migrated || (previousDay && previousDay != energy.day))
         {
             scheduleEnergySave();
         }
