@@ -99,6 +99,16 @@ void DC1::loop()
     {
         checkButton(ch);
     }
+    if (passwordFeedbackPeriod)
+    {
+        uint32_t elapsed = millis() - passwordFeedbackAt;
+        if (elapsed >= uint32_t(passwordFeedbackPeriod) * 6)
+        {
+            passwordFeedbackPeriod = 0;
+            logoLed();
+        }
+        else digitalWrite(LOGO_LED_PIN, (elapsed / passwordFeedbackPeriod) & 1 ? HIGH : LOW);
+    }
 
     if (bitRead(operationFlag, 0))
     {
@@ -738,45 +748,39 @@ void DC1::switchRelay(uint8_t ch, bool isOn, bool isSave)
 
 void DC1::checkButton(uint8_t ch)
 {
-    bool buttonState = ch == 0 ? digitalRead(btnGPIO[ch]) : cat9554->digitalRead(btnGPIO[ch]);
-
-    if (buttonState == 0)
+    bool pressed = (ch == 0 ? digitalRead(btnGPIO[ch]) : cat9554->digitalRead(btnGPIO[ch])) == 0;
+    if (pressed && !bitRead(buttonTiming, ch))
     {
-        if (!bitRead(buttonTiming, ch))
-        {
-            bitSet(buttonTiming, ch);
-            buttonTimingStart[ch] = millis();
-        }
-        else
-        { // buttonTiming = true
-            if (millis() >= (buttonTimingStart[ch] + buttonDebounceTime))
-            {
-                buttonAction[ch] = 1;
-            }
-            if (millis() >= (buttonTimingStart[ch] + buttonLongPressTime))
-            {
-                buttonAction[ch] = 2;
-            }
-        }
+        bitSet(buttonTiming, ch);
+        buttonTimingStart[ch] = millis();
+        buttonAction[ch] = 0;
     }
-    else
+    if (!bitRead(buttonTiming, ch)) return;
+
+    if (pressed)
     {
-        bitClear(buttonTiming, ch);
-        if (buttonAction[ch] != 0)
+        // A delayed release poll must not turn a shorter press into password recovery.
+        uint32_t elapsed = millis() - buttonTimingStart[ch];
+        if (ch == 0 && elapsed >= 10000)
         {
-            if (buttonAction[ch] == 1) // 执行短按动作
-            {
-                switchRelay(ch, !bitRead(lastState, ch), true);
-            }
-            else if (buttonAction[ch] == 2) // 执行长按动作
-            {
-                if (ch == 0)
-                {
-                    Wifi::setupWifiManager(false);
-                }
-            }
-            buttonAction[ch] = 0;
+            buttonAction[ch] = 3;
+            digitalWrite(LOGO_LED_PIN, ((elapsed - 10000) / 150) & 1 ? HIGH : LOW);
         }
+        else if (elapsed >= buttonLongPressTime) buttonAction[ch] = 2;
+        else if (elapsed >= buttonDebounceTime) buttonAction[ch] = 1;
+        return;
+    }
+
+    bitClear(buttonTiming, ch);
+    uint8_t action = buttonAction[ch];
+    buttonAction[ch] = 0;
+    if (action == 1) switchRelay(ch, !bitRead(lastState, ch), true);
+    else if (ch == 0 && action == 2) Wifi::setupWifiManager(false);
+    else if (ch == 0 && action == 3)
+    {
+        bool saved = Http::resetPassword();
+        passwordFeedbackPeriod = saved ? 100 : 400;
+        passwordFeedbackAt = millis();
     }
 }
 

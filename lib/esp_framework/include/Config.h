@@ -47,6 +47,7 @@ public:
 
     static void readConfig();
     static void resetConfig();
+    static bool resetWebPassword();
     static bool saveConfig(bool updateModule = true);
     static bool prepareRestart();
 

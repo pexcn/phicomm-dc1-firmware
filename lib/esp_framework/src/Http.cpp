@@ -956,6 +956,18 @@ void Http::handleModuleSetting()
     }
 }
 
+bool Http::resetPassword()
+{
+    if (!Config::resetWebPassword())
+    {
+        Debug::AddError(PSTR("Web password reset failed; previous password retained in RAM"));
+        return false;
+    }
+    webAuth.clear();
+    Debug::AddInfo(PSTR("Web password reset; open the login page to set a new password"));
+    return true;
+}
+
 bool Http::checkAuth(bool respond)
 {
     if (respond) server->sendHeader(F("Cache-Control"), F("no-store"));

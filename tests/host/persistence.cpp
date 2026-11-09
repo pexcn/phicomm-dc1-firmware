@@ -115,6 +115,45 @@ static void testRestartPreparation()
     module = nullptr;
 }
 
+static void testPasswordRecovery()
+{
+    Module current;
+    module = &current;
+    current.failSave = true; // Recovery must not depend on module/LittleFS saves.
+    Config::resetConfig();
+    strcpy(globalConfig.wifi.ssid, "home-network");
+    strcpy(globalConfig.wifi.pass, "wifi-password");
+    strcpy(globalConfig.mqtt.server, "192.168.1.10");
+    globalConfig.mqtt.port = 1883;
+    strcpy(globalConfig.http.pass, "2$000102030405060708090a0b0c0d0e0f$6bb6535cc4adff6d2138573f125b9fea7135129df687ca37139a6720c5c8b8e0");
+    globalConfig.module_cfg.size = 4;
+    memcpy(globalConfig.module_cfg.bytes, "\x08\x0b\x20\x02", 4);
+    assert(Config::saveConfig(false));
+    auto original = globalConfig;
+    auto previousFlash = flash;
+    failErase = true;
+    assert(!Config::resetWebPassword());
+    assert(memcmp(&globalConfig, &original, sizeof(original)) == 0);
+    assert(flash == previousFlash);
+
+    assert(Config::resetWebPassword());
+    memset(original.http.pass, 0, sizeof(original.http.pass));
+    assert(memcmp(&globalConfig, &original, sizeof(original)) == 0);
+    memset(&globalConfig, 0, sizeof(globalConfig));
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &original, sizeof(original)) == 0);
+    assert(current.saves == 0 && current.flushes == 0);
+    assert(memcmp(flash.data(), previousFlash.data(), CONFIG) == 0);
+    assert(memcmp(flash.data() + CONFIG + 4096, previousFlash.data() + CONFIG + 4096,
+        flash.size() - CONFIG - 4096) == 0);
+    unsigned before = erases[CONFIG / 4096];
+    assert(Config::resetWebPassword());
+    assert(erases[CONFIG / 4096] == before);
+    module = nullptr;
+    assert(Config::saveConfig());
+    puts("PASS: password recovery persists only the cleared password, rolls back on failure and preserves other flash");
+}
+
 static void testRetiredConfigFields()
 {
     // A valid older configuration can exceed the new schema's encoded maximum.
@@ -350,6 +389,7 @@ int main()
 {
     testConfiguration();
     testRestartPreparation();
+    testPasswordRecovery();
     testRetiredConfigFields();
     testRuntimeStorage();
     testCorruptRecordRecovery();

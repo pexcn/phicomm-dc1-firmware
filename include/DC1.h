@@ -73,9 +73,11 @@ private:
     // 按键
     uint8_t buttonDebounceTime = 50;
     uint16_t buttonLongPressTime = 2000; // 2000 = 2s
+    uint16_t passwordFeedbackPeriod = 0;
+    uint32_t passwordFeedbackAt = 0;
     uint8_t buttonTiming = 0;
     unsigned long buttonTimingStart[4] = {0, 0, 0, 0};
-    uint8_t buttonAction[4] = {0, 0, 0, 0}; // 0 = 没有要执行的动作, 1 = 执行短按动作, 2 = 执行长按动作
+    uint8_t buttonAction[4] = {0, 0, 0, 0}; // 0 = 无动作, 1 = 短按, 2 = 长按, 3 = 重置密码
     void checkButton(uint8_t ch);
 
     void httpDo(ESP8266WebServer *server);

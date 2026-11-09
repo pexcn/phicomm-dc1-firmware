@@ -35,6 +35,18 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                str(nanopb / 'pb_decode.c'), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Compile the real button handler with GPIO/action spies, without the Wi-Fi stack.
+with tempfile.TemporaryDirectory(prefix='dc1-button-tests-') as build:
+    header = (root / 'include/DC1.h').read_text()
+    source = (root / 'src/DC1.cpp').read_text()
+    fields = header[header.index('    uint8_t buttonDebounceTime'):header.index('    void checkButton(')]
+    handler = source[source.index('void DC1::checkButton('):source.index('void DC1::energyUpdate()')]
+    (Path(build) / 'button-fields.inc').write_text(fields)
+    (Path(build) / 'button-handler.inc').write_text(handler)
+    binary = str(Path(build) / 'buttons')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror', '-I' + build,
+                    'tests/host/buttons.cpp', '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Feed physical 4800-baud 8E1 edges through the installed serial library and meter.
 with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
     binary = str(Path(build) / 'meter')

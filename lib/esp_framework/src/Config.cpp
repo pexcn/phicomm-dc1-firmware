@@ -128,6 +128,20 @@ bool Config::saveConfig(bool updateModule)
     return false;
 }
 
+bool Config::resetWebPassword()
+{
+    char previous[sizeof(globalConfig.http.pass)];
+    memcpy(previous, globalConfig.http.pass, sizeof(previous));
+    memset(globalConfig.http.pass, 0, sizeof(globalConfig.http.pass));
+    // Preserve the module payload and bypass relay/energy storage during recovery.
+    if (!saveConfig(false))
+    {
+        memcpy(globalConfig.http.pass, previous, sizeof(previous));
+        return false;
+    }
+    return true;
+}
+
 bool Config::prepareRestart()
 {
     if (module && !module->flushRuntime())

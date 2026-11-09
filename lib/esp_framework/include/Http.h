@@ -30,6 +30,7 @@ private:
 
 public:
     static bool checkAuth(bool respond = true);
+    static bool resetPassword(); // Physical button recovery only; no HTTP endpoint.
     static bool saveConfigOrError();
     static ESP8266WebServer *server;
     static void begin();
