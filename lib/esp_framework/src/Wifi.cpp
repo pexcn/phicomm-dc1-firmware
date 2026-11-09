@@ -40,12 +40,12 @@ void Wifi::setupWifi()
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
     WiFi.hostname(UID);
-    Debug::AddInfo(PSTR("Connecting to Wi-Fi: %s"), globalConfig.wifi.ssid);
+    Debug::AddInfo(PSTR("WIFI  Connecting to %s"), globalConfig.wifi.ssid);
     STAGotIP = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &event) {
 #ifdef WIFI_CONNECT_TIMEOUT
         connectStart = 0;
 #endif
-        Debug::AddInfo(PSTR("WiFi1 connected. SSID: %s IP address: %s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+        Debug::AddInfo(PSTR("WIFI  Connected: %s, ip=%s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     });
     if (globalConfig.wifi.is_static)
     {
@@ -55,7 +55,7 @@ void Wifi::setupWifi()
         static_ip.fromString(globalConfig.wifi.ip);
         static_sn.fromString(globalConfig.wifi.sn);
         static_gw.fromString(globalConfig.wifi.gw);
-        Debug::AddInfo(PSTR("Custom STA IP/GW/Subnet: %s %s %s"), globalConfig.wifi.ip, globalConfig.wifi.sn, globalConfig.wifi.gw);
+        Debug::AddInfo(PSTR("WIFI  Static ip=%s, gateway=%s, mask=%s"), globalConfig.wifi.ip, globalConfig.wifi.sn, globalConfig.wifi.gw);
         WiFi.config(static_ip, static_gw, static_sn);
     }
 
@@ -69,23 +69,19 @@ void Wifi::setupWifiManager(bool resetSettings)
 {
     if (resetSettings)
     {
-        Debug::AddInfo(PSTR("WifiManager ResetSettings"));
         Config::resetConfig();
 
-        Debug::AddInfo(PSTR("settings invalidated"));
-        Debug::AddInfo(PSTR("THIS MAY CAUSE AP NOT TO START UP PROPERLY. YOU NEED TO COMMENT IT OUT AFTER ERASING THE DATA."));
         WiFi.disconnect(true);
     }
     WiFi.hostname(UID);
     STAGotIP = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP &event) {
-        Debug::AddInfo(PSTR("WiFi2 connected. SSID: %s IP address: %s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+        Debug::AddInfo(PSTR("WIFI  Connected: %s, ip=%s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     });
 
     configPortalStart = millis();
     if (WiFi.isConnected())
     {
         WiFi.mode(WIFI_AP_STA);
-        Debug::AddInfo(PSTR("SET AP STA Mode"));
     }
     else
     {
@@ -93,13 +89,12 @@ void Wifi::setupWifiManager(bool resetSettings)
         WiFi.disconnect();
         WiFi.mode(WIFI_AP_STA);
         WiFi.persistent(true);
-        Debug::AddInfo(PSTR("SET AP Mode"));
     }
 
     connect = false;
     WiFi.softAP(UID);
     delay(500);
-    Debug::AddInfo(PSTR("AP IP address: %s"), WiFi.softAPIP().toString().c_str());
+    Debug::AddInfo(PSTR("WIFI  Setup hotspot ip=%s"), WiFi.softAPIP().toString().c_str());
 
     dnsServer = new DNSServer();
     dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
@@ -141,10 +136,9 @@ void Wifi::loop()
     if (connect)
     {
         connect = false;
-        Debug::AddInfo(PSTR("Connecting to new AP"));
+        Debug::AddInfo(PSTR("WIFI  Connecting to selected network"));
 
         WiFi.begin(_ssid.c_str(), _pass.c_str());
-        Debug::AddInfo(PSTR("Waiting for connection result with time out"));
     }
 
     if (_ssid.length() > 0 && WiFi.isConnected())
@@ -156,7 +150,7 @@ void Wifi::loop()
         if (!Config::saveConfig())
         {
             retryAt = millis() + 60000;
-            Debug::AddError(PSTR("WiFi connected but settings not saved; keeping setup portal open"));
+            Debug::AddError(PSTR("WIFI  Save failed; setup hotspot stays open"));
             return;
         }
         retryAt = 0;
@@ -165,7 +159,7 @@ void Wifi::loop()
         restartPending = true;
         restartAt = millis() + 3000;
 
-        Debug::AddInfo(PSTR("WiFi connected. SSID: %s IP address: %s"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+        Debug::AddInfo(PSTR("WIFI  Network saved: %s, ip=%s; restarting"), WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
 
         dnsServer->stop();
         configPortalStart = 0;
@@ -181,7 +175,7 @@ void Wifi::loop()
         configPortalStart = 0;
         _ssid = "";
         _pass = "";
-        Debug::AddInfo(PSTR("startConfigPortal TimeOut"));
+        Debug::AddInfo(PSTR("WIFI  Setup timed out"));
         if (WiFi.isConnected())
         {
             //	为了使WEB获取到IP 2秒后才关闭AP
@@ -190,7 +184,7 @@ void Wifi::loop()
         }
         else
         {
-            Debug::AddInfo(PSTR("Wifi failed to connect and hit timeout. Rebooting..."));
+            Debug::AddInfo(PSTR("WIFI  Connection timed out; restarting"));
             restartPending = true;
             restartAt = millis() + 3000;
         }

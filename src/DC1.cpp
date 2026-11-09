@@ -38,6 +38,7 @@ void DC1::init()
     strcpy(energyTeleTopic, Mqtt::getTeleTopic(F("energy")).c_str());
 
     channels = 4;
+    bitSet(operationFlag, 1);
     bool safeOff = config.power_on_state >= 2 && !relayStateValid;
     for (uint8_t ch = 0; ch < channels; ch++)
     {
@@ -70,6 +71,10 @@ void DC1::init()
         rememberedState = lastState;
         relayStateValid = true;
     }
+    bitClear(operationFlag, 1);
+    Debug::AddInfo(PSTR("RELAY Master=%s, outlets=%s/%s/%s"),
+        bitRead(lastState, 0) ? "ON" : "OFF", bitRead(lastState, 1) ? "ON" : "OFF",
+        bitRead(lastState, 2) ? "ON" : "OFF", bitRead(lastState, 3) ? "ON" : "OFF");
     energyInit();
     energyCheckpointAt = millis() + ENERGY_SAVE_INTERVAL_MS;
 }
@@ -166,7 +171,7 @@ void DC1::readRuntime(bool valid)
                 runtimeMigrationPending = true;
             }
         }
-        else Debug::AddError(PSTR("Relay snapshot invalid; legacy state not restored"));
+        else Debug::AddError(PSTR("RELAY Snapshot invalid; legacy state not restored"));
     }
     energyResult = RuntimeStorage::loadEnergy(energy);
     if (energyResult != RuntimeStorage::Result::Ok)
@@ -186,14 +191,14 @@ void DC1::readRuntime(bool valid)
             scheduleEnergySave();
             runtimeMigrationPending = true;
         }
-        else Debug::AddError(PSTR("Energy snapshot invalid; legacy counters not restored"));
+        else Debug::AddError(PSTR("ENERGY Snapshot invalid; legacy counters not restored"));
     }
     if (runtimeMigrationPending && RuntimeStorage::ready()) saveRuntime();
 }
 
 void DC1::resetConfig()
 {
-    Debug::AddInfo(PSTR("moduleResetConfig . . . OK"));
+    Debug::AddInfo(PSTR("CFG   Outlet defaults restored"));
     memset(&config, 0, sizeof(DC1ConfigMessage));
 
     config.power_on_state = 3;
@@ -615,7 +620,7 @@ bool DC1::saveRelay(bool recover)
     relayResult = RuntimeStorage::loadRelay(previous);
     relaySavePending = relayResult != RuntimeStorage::Result::Invalid;
     relaySaveAt = millis() + 60000;
-    Debug::AddError(PSTR("Relay save failed; storage may need initialization"));
+    Debug::AddError(PSTR("RELAY Save failed; check runtime storage"));
     return false;
 }
 
@@ -643,7 +648,7 @@ bool DC1::saveEnergy(bool recover)
     energyResult = RuntimeStorage::loadEnergy(previous);
     if (energyResult == RuntimeStorage::Result::Invalid) energySavePending = false;
     else scheduleEnergySave(60000);
-    Debug::AddError(PSTR("Energy save failed; storage may need initialization"));
+    Debug::AddError(PSTR("ENERGY Save failed; check runtime storage"));
     return false;
 }
 
@@ -666,7 +671,7 @@ void DC1::switchRelay(uint8_t ch, bool isOn, bool isSave)
 {
     if (ch >= channels)
     {
-        Debug::AddInfo(PSTR("invalid channel: %d"), ch);
+        Debug::AddError(PSTR("RELAY Invalid channel=%u"), ch);
         return;
     }
 
@@ -695,19 +700,23 @@ void DC1::switchRelay(uint8_t ch, bool isOn, bool isSave)
             }
         }
     }
-    Debug::AddInfo(PSTR("Relay %d . . . %s"), ch + 1, isOn ? "ON" : "OFF");
-
     if (!cat9554->digitalWrite(relGPIO[ch], isOn ? HIGH : LOW))
     {
-        Debug::AddError(PSTR("CAT9554 digitalWrite Error"));
+        Debug::AddError(PSTR("RELAY Write failed: channel=%u, retrying"), ch + 1);
         if (!cat9554->digitalWrite(relGPIO[ch], isOn ? HIGH : LOW))
         {
-            Debug::AddError(PSTR("CAT9554 digitalWrite Error2"));
+            Debug::AddError(PSTR("RELAY Write retry failed: channel=%u"), ch + 1);
             return;
         }
     }
 
+    bool changed = bitRead(lastState, ch) != isOn;
     bitWrite(lastState, ch, isOn);
+    if (changed && !bitRead(operationFlag, 1))
+    {
+        if (ch == 0) Debug::AddInfo(PSTR("RELAY Master=%s"), isOn ? "ON" : "OFF");
+        else Debug::AddInfo(PSTR("RELAY Outlet %u=%s"), ch, isOn ? "ON" : "OFF");
+    }
 
     powerStatTopic[strlen(powerStatTopic) - 1] = ch + 49; // 48 + 1 + ch
     Mqtt::publish(powerStatTopic, isOn ? "on" : "off", globalConfig.mqtt.retain);
@@ -925,7 +934,7 @@ void DC1::energyMaxPower()
             cse7766->Energy.mplh_counter--;
             if (!cse7766->Energy.mplh_counter)
             {
-                Debug::AddError(PSTR("MaxPowerReached: %d"), (uint16_t)cse7766->Energy.active_power);
+                Debug::AddError(PSTR("POWER Overload: %u W; disabling output"), (uint16_t)cse7766->Energy.active_power);
                 lastState2 = lastState;
                 for (size_t ch = 0; ch < channels; ch++)
                 {
@@ -967,7 +976,7 @@ void DC1::energyMaxPower()
                 cse7766->Energy.mplr_counter--;
                 if (cse7766->Energy.mplr_counter)
                 {
-                    Debug::AddError(PSTR("PowerMonitor ON"));
+                    Debug::AddInfo(PSTR("POWER Retrying output after overload"));
                     if (lastState2)
                     {
                         for (size_t ch = 0; ch < channels; ch++)
@@ -982,7 +991,7 @@ void DC1::energyMaxPower()
                 }
                 else
                 {
-                    Debug::AddInfo(PSTR("MaxPowerReachedRetry OFF"));
+                    Debug::AddInfo(PSTR("POWER Retry limit reached; output remains off"));
                 }
             }
         }

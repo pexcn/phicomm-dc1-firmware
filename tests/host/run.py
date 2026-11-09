@@ -35,6 +35,18 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                str(nanopb / 'pb_decode.c'), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Exercise the logger and HTTP escaping with the original fixed buffer sizes.
+with tempfile.TemporaryDirectory(prefix='dc1-log-tests-') as build:
+    source = (root / 'lib/esp_framework/src/Http.cpp').read_text()
+    start = source.index('                    size_t j = 0;', source.index('void Http::handleGetStatus()'))
+    end = source.index('                    cflg = true;', start)
+    (Path(build) / 'log-json.inc').write_text(source[start:end])
+    binary = str(Path(build) / 'logging')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-Itests/host/logging', '-Ilib/esp_framework/include', '-I' + build,
+                    'tests/host/logging/logging.cpp', 'lib/esp_framework/src/Debug.cpp',
+                    '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Compile the real button handler with GPIO/action spies, without the Wi-Fi stack.
 with tempfile.TemporaryDirectory(prefix='dc1-button-tests-') as build:
     header = (root / 'include/DC1.h').read_text()

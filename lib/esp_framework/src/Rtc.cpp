@@ -146,7 +146,7 @@ void Rtc::loop()
         updateClock();
         if (!syncWarning && millis() - lastSyncAt >= SYNC_WARNING_MS)
         {
-            Debug::AddError(PSTR("NTP: no successful sync for 24 hours"));
+            Debug::AddError(PSTR("NTP   No successful sync for 24 hours"));
             syncWarning = true;
         }
     }
@@ -184,7 +184,7 @@ void Rtc::init()
         if (!rtcTime.valid) return;
         int64_t correction = int64_t(utcTime) - previous;
         if (!synced || syncWarning || correction >= 5 || correction <= -5)
-            Debug::AddInfo(PSTR("NTP %s: %04d-%02d-%02d %02d:%02d:%02d (UTC+8)"),
+            Debug::AddInfo(PSTR("NTP   Time %s: %04d-%02d-%02d %02d:%02d:%02d (UTC+8)"),
                 !synced ? "synced" : syncWarning ? "recovered" : "adjusted",
                 rtcTime.year, rtcTime.month, rtcTime.day_of_month,
                 rtcTime.hour, rtcTime.minute, rtcTime.second);
@@ -195,12 +195,12 @@ void Rtc::init()
     sntp_stop();
     if (globalConfig.wifi.ntp[0] != '\0')
     {
-        Debug::AddInfo(PSTR("NTP Server: %s"), globalConfig.wifi.ntp);
+        Debug::AddInfo(PSTR("NTP   Server=%s"), globalConfig.wifi.ntp);
         sntp_setservername(0, globalConfig.wifi.ntp);
     }
     else
     {
-        Debug::AddInfo(PSTR("NTP Server: default"));
+        Debug::AddInfo(PSTR("NTP   Using default servers"));
         sntp_setservername(0, (char *)"120.25.115.20");
         sntp_setservername(1, (char *)"203.107.6.88");
         sntp_setservername(2, (char *)"ntp3.aliyun.com");

@@ -14,12 +14,12 @@ bool Mqtt::mqttConnect()
 {
     if (WiFi.status() != WL_CONNECTED)
     {
-        Debug::AddInfo(PSTR("wifi disconnected"));
+        Debug::AddInfo(PSTR("MQTT  Wi-Fi unavailable"));
         return false;
     }
     if (globalConfig.mqtt.port == 0)
     {
-        Debug::AddInfo(PSTR("no set mqtt info"));
+        Debug::AddInfo(PSTR("MQTT  Disabled"));
         return false;
     }
     if (mqttClient.connected())
@@ -27,12 +27,12 @@ bool Mqtt::mqttConnect()
         return true;
     }
 
-    Debug::AddInfo(PSTR("client mqtt not connected, trying to connect to %s:%d Broker"), globalConfig.mqtt.server, globalConfig.mqtt.port);
+    Debug::AddInfo(PSTR("MQTT  Connecting to %s:%u"), globalConfig.mqtt.server, globalConfig.mqtt.port);
     mqttClient.setServer(globalConfig.mqtt.server, globalConfig.mqtt.port);
 
     if (mqttClient.connect(UID, globalConfig.mqtt.user, globalConfig.mqtt.pass, getTeleTopic(F("availability")).c_str(), 0, true, "offline"))
     {
-        Debug::AddInfo(PSTR("successful client mqtt connection"));
+        Debug::AddInfo(PSTR("MQTT  Connected"));
         if (connectedcallback != NULL)
         {
             connectedcallback();
@@ -40,7 +40,7 @@ bool Mqtt::mqttConnect()
     }
     else
     {
-        Debug::AddInfo(PSTR("Connecting to %s:%d Broker . . failed, rc=%d"), globalConfig.mqtt.server, globalConfig.mqtt.port, mqttClient.state());
+        Debug::AddError(PSTR("MQTT  Connect failed: %s:%u (rc=%d)"), globalConfig.mqtt.server, globalConfig.mqtt.port, mqttClient.state());
     }
 
     return mqttClient.connected();

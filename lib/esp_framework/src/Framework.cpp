@@ -8,7 +8,7 @@ uint16_t Framework::rebootCount = 0;
 #ifndef DISABLE_MQTT
 void Framework::callback(char *topic, byte *payload, unsigned int length)
 {
-    Debug::AddInfo(PSTR("Subscribe: %s payload: %.*s"), topic, length, payload);
+    Debug::AddInfo(PSTR("MQTT  Command %s: %.*s"), topic, length, payload);
 
     char *cmnd = strrchr(topic, '/');
     if (cmnd == nullptr)
@@ -75,7 +75,6 @@ void Framework::one(unsigned long baud)
 
 void Framework::setup()
 {
-    Debug::AddError(PSTR("---------------------  v%s  %s  -------------------"), module->getModuleVersion().c_str(), Rtc::GetBuildDateAndTime().c_str());
     if (rebootCount == 1)
     {
         Config::readConfig();
@@ -102,11 +101,11 @@ void Framework::setup()
     }
     Util::strlowr(UID);
 
-    Debug::AddInfo(PSTR("UID: %s"), UID);
+    Debug::AddInfo(PSTR("SYS   Firmware %s, device=%s"), module->getModuleVersion().c_str(), UID);
 
     if (MQTT_MAX_PACKET_SIZE == 128)
     {
-        Debug::AddError(PSTR("WRONG PUBSUBCLIENT LIBRARY USED PLEASE INSTALL THE ONE FROM OMG LIB FOLDER"));
+        Debug::AddError(PSTR("MQTT  Packet buffer too small; check PubSubClient build flags"));
     }
 
     if (rebootCount == 3)

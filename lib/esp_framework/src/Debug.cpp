@@ -9,12 +9,8 @@ char Debug::webLog[WEB_LOG_SIZE] = {'\0'};
 
 size_t Debug::strchrspn(const char *str1, int character)
 {
-    size_t ret = 0;
-    char *start = (char *)str1;
-    char *end = strchr(str1, character);
-    if (end)
-        ret = end - start;
-    return ret;
+    const char *end = strchr(str1, character);
+    return end ? size_t(end - str1) : 0;
 }
 
 #ifdef WEB_LOG_SIZE
@@ -49,37 +45,78 @@ void Debug::GetLog(uint8_t idx, char **entry_pp, uint16_t *len_p)
 
 void Debug::AddLog(uint8_t loglevel)
 {
-    char mxtime[10]; // "13:45:21 "
-    snprintf_P(mxtime, sizeof(mxtime), PSTR("%02d:%02d:%02d "), Rtc::rtcTime.hour, Rtc::rtcTime.minute, Rtc::rtcTime.second);
+    uint8_t outputs = globalConfig.debug.type & (1 | 8);
+#ifdef WEB_LOG_SIZE
+    if ((globalConfig.debug.type & 4) || loglevel == LOG_LEVEL_ERROR) outputs |= 4;
+#endif
+    if (!outputs) return;
 
-    if ((1 & globalConfig.debug.type) == 1)
+    char prefix[20]; // Also fits an uncalibrated uptime of UINT32_MAX seconds.
+    char level = loglevel == LOG_LEVEL_ERROR ? 'E' : loglevel >= LOG_LEVEL_DEBUG ? 'D' : 'I';
+    size_t prefixLength;
+    if (Rtc::rtcTime.valid)
     {
-        Serial.printf(PSTR("%s%s\r\n"), mxtime, tmpData);
+        // Fixed-width clock: avoid printf conversions on the normal logging path.
+        memcpy_P(prefix, PSTR(" 00:00:00 [I] "), 15);
+        prefix[1] += Rtc::rtcTime.hour / 10;
+        prefix[2] += Rtc::rtcTime.hour % 10;
+        prefix[4] += Rtc::rtcTime.minute / 10;
+        prefix[5] += Rtc::rtcTime.minute % 10;
+        prefix[7] += Rtc::rtcTime.second / 10;
+        prefix[8] += Rtc::rtcTime.second % 10;
+        prefix[11] = level;
+        prefixLength = 14;
     }
-    if ((8 & globalConfig.debug.type) == 8)
+    else
     {
-        Serial1.printf(PSTR("%s%s\r\n"), mxtime, tmpData);
+        // Reuse the existing one-second counter; no clock queries or new timers.
+        uint32_t seconds = perSecond;
+        prefixLength = snprintf_P(prefix, sizeof(prefix), PSTR("+%02u:%02u:%02u [%c] "),
+            unsigned(seconds / 3600), unsigned(seconds / 60 % 60), unsigned(seconds % 60), level);
+    }
+    size_t messageLength = strlen(tmpData);
+    if (outputs & 1)
+    {
+        Serial.write(reinterpret_cast<const uint8_t *>(prefix), prefixLength);
+        Serial.write(reinterpret_cast<const uint8_t *>(tmpData), messageLength);
+        Serial.write(reinterpret_cast<const uint8_t *>("\r\n"), 2);
+    }
+    if (outputs & 8)
+    {
+        Serial1.write(reinterpret_cast<const uint8_t *>(prefix), prefixLength);
+        Serial1.write(reinterpret_cast<const uint8_t *>(tmpData), messageLength);
+        Serial1.write(reinterpret_cast<const uint8_t *>("\r\n"), 2);
     }
 
 #ifdef WEB_LOG_SIZE
     // Delimited, zero-terminated buffer of log lines.
     // Each entry has this format: [index][log data]['\1']
-    if ((4 & globalConfig.debug.type) == 4 || loglevel == LOG_LEVEL_ERROR)
+    if (outputs & 4)
     {
-        if (!webLogIndex)
-            webLogIndex++;                                           // Index 0 is not allowed as it is the end of char string
-        while (webLogIndex == webLog[0] ||                           // If log already holds the next index, remove it
-               strlen(webLog) + strlen(tmpData) + 13 > WEB_LOG_SIZE) // 13 = web_log_index + mxtime + '\1' + '\0'
+        size_t needed = prefixLength + messageLength + 3; // Index, delimiter and NUL.
+        if (needed > sizeof(webLog)) return;
+        size_t used = strlen(webLog);
+        if (!webLogIndex) ++webLogIndex;
+        while (used && (webLogIndex == uint8_t(webLog[0]) || used + needed > sizeof(webLog)))
         {
-            char *it = webLog;
-            it++;                                              // Skip web_log_index
-            it += strchrspn(it, '\1');                         // Skip log line
-            it++;                                              // Skip delimiting "\1"
-            memmove(webLog, it, WEB_LOG_SIZE - (it - webLog)); // Move buffer forward to remove oldest log line
+            size_t removed = strchrspn(webLog + 1, '\1') + 2;
+            if (removed > used)
+            {
+                used = 0;
+                break;
+            }
+            memmove(webLog, webLog + removed, used - removed + 1);
+            used -= removed;
         }
-        snprintf_P(webLog, sizeof(webLog), PSTR("%s%c%s%s\1"), webLog, webLogIndex++, mxtime, tmpData);
-        if (!webLogIndex)
-            webLogIndex++; // Index 0 is not allowed as it is the end of char string
+        // Append only the new entry; never reformat or copy the existing log.
+        char *entry = webLog + used;
+        *entry++ = webLogIndex++;
+        memcpy(entry, prefix, prefixLength);
+        entry += prefixLength;
+        memcpy(entry, tmpData, messageLength);
+        entry[messageLength] = '\1';
+        entry[messageLength + 1] = '\0';
+        if (!webLogIndex) ++webLogIndex;
     }
 #endif
 

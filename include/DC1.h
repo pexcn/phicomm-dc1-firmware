@@ -33,7 +33,7 @@
 class DC1 : public Module
 {
 private:
-    uint8_t operationFlag = 0; // 0每秒CSE7766
+    uint8_t operationFlag = 0; // Bit 0: metering tick; bit 1: relay startup summary.
     EnergyState energy;
     uint8_t rememberedState = 0;
     bool relayStateValid = false;

@@ -644,47 +644,31 @@ void Http::handleGetStatus()
                     }
 
                     size_t j = 0;
-                    for (size_t i = 0; i < len - 1; i++)
+                    for (uint16_t i = 0; i + 1 < len; i++)
                     {
+                        // Stream long escaped lines without another buffer or String.
+                        if (j >= sizeof(tmpData) - 2)
+                        {
+                            server->sendContent(tmpData, j);
+                            j = 0;
+                        }
                         char each = tmp[i];
-                        if (each == '\\' || each == '"')
+                        bool escape = true;
+                        switch (each)
                         {
-                            tmpData[j++] = '\\';
-                            tmpData[j++] = each;
+                        case '\\': case '"': break;
+                        case '\b': each = 'b'; break;
+                        case '\f': each = 'f'; break;
+                        case '\n': each = 'n'; break;
+                        case '\r': each = 'r'; break;
+                        case '\t': each = 't'; break;
+                        default: escape = false; break;
                         }
-                        else if (each == '\b')
-                        {
-                            tmpData[j++] = '\\';
-                            tmpData[j++] = 'b';
-                        }
-                        else if (each == '\f')
-                        {
-                            tmpData[j++] = '\\';
-                            tmpData[j++] = 'f';
-                        }
-                        else if (each == '\n')
-                        {
-                            tmpData[j++] = '\\';
-                            tmpData[j++] = 'n';
-                        }
-                        else if (each == '\r')
-                        {
-                            tmpData[j++] = '\\';
-                            tmpData[j++] = 'r';
-                        }
-                        else if (each == '\t')
-                        {
-                            tmpData[j++] = '\\';
-                            tmpData[j++] = 't';
-                        }
-                        else
-                        {
-                            tmpData[j++] = each;
-                        }
+                        if (escape) tmpData[j++] = '\\';
+                        tmpData[j++] = each;
                     }
-                    tmpData[j++] = '\0';
-
-                    server->sendContent_P(tmpData);
+                    tmpData[j] = '\0';
+                    if (j) server->sendContent(tmpData, j);
                     cflg = true;
                 }
                 counter++;
@@ -739,29 +723,29 @@ void Http::handleUpdate()
         {
             uint8_t _error = Update.getError();
             if(_error == UPDATE_ERROR_WRITE){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Flash Write Failed"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Flash Write Failed"), _error);
             } else if(_error == UPDATE_ERROR_ERASE){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Flash Erase Failed"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Flash Erase Failed"), _error);
             } else if(_error == UPDATE_ERROR_READ){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Flash Read Failed"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Flash Read Failed"), _error);
             } else if(_error == UPDATE_ERROR_SPACE){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Not Enough Space"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Not Enough Space"), _error);
             } else if(_error == UPDATE_ERROR_SIZE){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Bad Size Given"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Bad Size Given"), _error);
             } else if(_error == UPDATE_ERROR_STREAM){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Stream Read Timeout"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Stream Read Timeout"), _error);
             } else if(_error == UPDATE_ERROR_SIGN){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Signature verification failed"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Signature verification failed"), _error);
             } else if(_error == UPDATE_ERROR_FLASH_CONFIG){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Flash config wrong real: %d IDE: %d"), _error,  ESP.getFlashChipRealSize(), ESP.getFlashChipSize());
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Flash config wrong real: %d IDE: %d"), _error,  ESP.getFlashChipRealSize(), ESP.getFlashChipSize());
             } else if(_error == UPDATE_ERROR_NEW_FLASH_CONFIG){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: new Flash config wrong real: %d"), _error, ESP.getFlashChipRealSize());
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: new Flash config wrong real: %d"), _error, ESP.getFlashChipRealSize());
             } else if(_error == UPDATE_ERROR_MAGIC_BYTE){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Magic byte is wrong, not 0xE9"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Magic byte is wrong, not 0xE9"), _error);
             } else if (_error == UPDATE_ERROR_BOOTSTRAP){
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: Invalid bootstrapping state, reset ESP8266 before updating"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: Invalid bootstrapping state, reset ESP8266 before updating"), _error);
             } else {
-                snprintf_P(tmpData, sizeof(tmpData), PSTR("Update Error[%u]: UNKNOWN"), _error);
+                snprintf_P(tmpData, sizeof(tmpData), PSTR("OTA   Error %u: UNKNOWN"), _error);
             }
             Debug::AddLog(LOG_LEVEL_ERROR);
             char out[150] = {0};
@@ -783,7 +767,7 @@ void Http::handleUpdate()
                     firmware.cancel();
                     if (!checkAuth(false))
                     {
-                        Debug::AddInfo(PSTR("Unauthenticated Update"));
+                        Debug::AddInfo(PSTR("OTA   Rejected: login required"));
                         return;
                     }
                     if (!Config::prepareRestart())
@@ -792,7 +776,7 @@ void Http::handleUpdate()
                         return;
                     }
                     WiFiUDP::stopAll();
-                    Debug::AddInfo(PSTR("Update: %s"), upload.filename.c_str());
+                    Debug::AddInfo(PSTR("OTA   Upload %s"), upload.filename.c_str());
                     uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
                     uploadAllowed = firmware.begin(maxSketchSpace);
                 }
@@ -813,7 +797,7 @@ void Http::handleUpdate()
                 {
                     firmware.cancel();
                     uploadAllowed = uploadComplete = false;
-                    Debug::AddInfo(PSTR("Update was aborted"));
+                    Debug::AddInfo(PSTR("OTA   Upload aborted"));
                 }
                 delay(0); });
 }
@@ -860,7 +844,7 @@ void Http::begin()
         module->httpAdd(server);
     }
     server->begin(globalConfig.http.port);
-    Debug::AddInfo(PSTR("HTTP server started port: %d"), globalConfig.http.port);
+    Debug::AddInfo(PSTR("HTTP  Listening on port %u"), globalConfig.http.port);
 }
 
 void Http::stop()
@@ -870,7 +854,7 @@ void Http::stop()
         return;
     }
     server->stop();
-    Debug::AddInfo(PSTR("HTTP server stoped"));
+    Debug::AddInfo(PSTR("HTTP  Server stopped"));
 }
 
 void Http::loop()
@@ -960,11 +944,11 @@ bool Http::resetPassword()
 {
     if (!Config::resetWebPassword())
     {
-        Debug::AddError(PSTR("Web password reset failed; previous password retained in RAM"));
+        Debug::AddError(PSTR("AUTH  Reset failed; previous password retained in RAM"));
         return false;
     }
     webAuth.clear();
-    Debug::AddInfo(PSTR("Web password reset; open the login page to set a new password"));
+    Debug::AddInfo(PSTR("AUTH  Password reset; reopen login to set a new password"));
     return true;
 }
 

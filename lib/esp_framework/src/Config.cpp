@@ -35,7 +35,7 @@ uint16_t Config::crc16(uint8_t *ptr, uint16_t len)
 
 void Config::resetConfig()
 {
-    Debug::AddInfo(PSTR("resetConfig . . . OK"));
+    Debug::AddInfo(PSTR("CFG   Defaults restored"));
     memset(&globalConfig, 0, sizeof(GlobalConfigMessage));
 
 #ifdef WIFI_SSID
@@ -102,7 +102,7 @@ void Config::readConfig()
     if (!status)
     {
         globalConfig.debug.type = 1;
-        Debug::AddError(PSTR("readConfig . . . Error"));
+        Debug::AddError(PSTR("CFG   Read failed; using defaults"));
         resetConfig();
     }
     else
@@ -111,7 +111,7 @@ void Config::readConfig()
         {
             module->readConfig();
         }
-        Debug::AddInfo(PSTR("readConfig       . . . OK Len: %d"), len);
+        Debug::AddInfo(PSTR("CFG   Configuration loaded"));
     }
 }
 
@@ -146,7 +146,7 @@ bool Config::prepareRestart()
 {
     if (module && !module->flushRuntime())
     {
-        Debug::AddError(PSTR("Restart/OTA cancelled: runtime data not saved"));
+        Debug::AddError(PSTR("SYS   Restart/OTA cancelled: runtime save failed"));
         return false;
     }
     return saveConfig();
@@ -163,7 +163,7 @@ bool Config::writeConfig(bool updateModule)
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
     if (!pb_encode(&stream, GlobalConfigMessage_fields, &globalConfig))
     {
-        Debug::AddError(PSTR("saveConfig . . . Encode Error"));
+        Debug::AddError(PSTR("CFG   Encode failed"));
         return false;
     }
     size_t len = stream.bytes_written;
@@ -178,7 +178,7 @@ bool Config::writeConfig(bool updateModule)
     if (spi_flash_read(EEPROM_PHYS_ADDR, (uint32 *)data, SPI_FLASH_SEC_SIZE) != SPI_FLASH_RESULT_OK)
     {
         free(data);
-        Debug::AddError(PSTR("saveConfig . . . Read EEPROM Data Error"));
+        Debug::AddError(PSTR("CFG   Flash read failed"));
         return false;
     }
     // Compare the actual bytes as well as the checksum (CRC16 can collide).
@@ -196,10 +196,10 @@ bool Config::writeConfig(bool updateModule)
     free(data);
     if (!status)
     {
-        Debug::AddError(PSTR("saveConfig . . . Write/Verify Error"));
+        Debug::AddError(PSTR("CFG   Flash write/verify failed"));
         return false;
     }
-    Debug::AddInfo(PSTR("saveConfig . . . OK Len: %d Crc: %d"), len, crc);
+    Debug::AddInfo(PSTR("CFG   Configuration saved"));
     return true;
 }
 
@@ -217,7 +217,7 @@ bool Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_msgdesc_
         || globalConfig.cfg_version != version                                                                    // 版本不一致
         || globalConfig.module_crc != Config::crc16(globalConfig.module_cfg.bytes, globalConfig.module_cfg.size)) // crc错误
     {
-        Debug::AddError(PSTR("moduleReadConfig . . . Error %d %d %d"), globalConfig.cfg_version, version, globalConfig.module_cfg.size);
+        Debug::AddError(PSTR("CFG   Module mismatch: stored=%u, expected=%u, size=%u"), globalConfig.cfg_version, version, globalConfig.module_cfg.size);
         if (module)
         {
             module->resetConfig();
@@ -233,10 +233,6 @@ bool Config::moduleReadConfig(uint16_t version, uint16_t size, const pb_msgdesc_
         {
             module->resetConfig();
         }
-    }
-    else
-    {
-        Debug::AddInfo(PSTR("moduleReadConfig . . . OK Len: %d"), globalConfig.module_cfg.size);
     }
     return status;
 }
@@ -257,7 +253,6 @@ bool Config::moduleSaveConfig(uint16_t version, uint16_t size, const pb_msgdesc_
             globalConfig.module_crc = crc;
             globalConfig.module_cfg.size = len;
             memcpy(globalConfig.module_cfg.bytes, buffer, len);
-            //Debug::AddInfo(PSTR("moduleSaveConfig . . . OK Len: %d"), len);
         }
     }
     return status;
