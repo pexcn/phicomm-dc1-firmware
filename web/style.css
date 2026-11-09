@@ -286,9 +286,13 @@ small {
   background: transparent;
   font-weight: 400;
 }
+.topbar,
+.main {
+  margin-left: max(232px, calc((100% + 232px - 1590px) / 2));
+  max-width: 1590px;
+}
 .topbar {
   height: 68px;
-  margin-left: 232px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -336,9 +340,7 @@ small {
   border: 0;
 }
 .main {
-  margin-left: 232px;
   padding: 32px;
-  max-width: 1590px;
 }
 .page-heading {
   display: flex;
