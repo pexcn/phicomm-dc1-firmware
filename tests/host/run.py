@@ -79,6 +79,12 @@ with tempfile.TemporaryDirectory(prefix='dc1-auth-tests-') as build:
 # Check the published binary envelope and the streaming activation gate.
 firmware = root / '.pio/build/dc1/firmware.bin'
 image = firmware.read_bytes()
+version_header = (root / '.pio/build/dc1/generated/FirmwareVersion.h').read_text()
+version = re.search(r'^#define FIRMWARE_VERSION "([^"]+)"', version_header, re.MULTILINE).group(1)
+assert re.fullmatch(r'\d{8}-(?:[0-9a-f]{7}(?:-dirty)?|dev)', version)
+assert version.encode() + b'\0' in image
+assert b'2020.07.11.2000\0' not in image
+print('PASS: generated firmware version embedded in the published binary: ' + version)
 identity, size, digest = struct.unpack('<32sI32s', image[-68:])
 header = (root / 'lib/esp_framework/include/FirmwareUpload.h').read_text()
 expected_id = re.search(r'^#define FIRMWARE_ID "([^"]+)"', header, re.MULTILINE).group(1).encode()

@@ -5,6 +5,7 @@
 
 #include <ESP8266WebServer.h>
 #include "Config.h"
+#include "FirmwareVersion.h"
 #include "Led.h"
 #include "Wifi.h"
 #ifndef DISABLE_MQTT
@@ -19,7 +20,7 @@ public:
     virtual void init();
     virtual String getModuleName();
     virtual String getModuleCNName();
-    virtual String getModuleVersion();
+    virtual String getModuleVersion() { return F(FIRMWARE_VERSION); }
 
     virtual bool moduleLed();
 

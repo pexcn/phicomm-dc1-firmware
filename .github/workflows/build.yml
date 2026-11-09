@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: python -m pip install platformio==6.2.0
 
+      - name: Set release date
+        run: echo "RELEASE_TAG=$(date -u +%Y%m%d)" >> "$GITHUB_ENV"
+
       - name: Run PlatformIO
         run: platformio run
 
@@ -35,8 +38,6 @@ jobs:
 
       - name: Set release tag
         run: |
-          RELEASE_TAG=$(date +%Y%m%d)
-          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           git tag --force "$RELEASE_TAG" "$GITHUB_SHA"
           git push --force origin "refs/tags/$RELEASE_TAG"
 

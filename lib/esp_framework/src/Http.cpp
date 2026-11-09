@@ -222,7 +222,7 @@ void Http::handleConfig()
     sendJsonField("ssid", WiFi.SSID());
     sendJsonField("local_ip", server->client().localIP().toString());
     sendJsonField("wifi_mode", WiFi.getMode() == WIFI_STA ? F("STA") : WiFi.getMode() == WIFI_AP ? F("AP") : F("AP + STA"));
-    sendJsonField("version", module ? module->getModuleVersion() : F("修复模式"));
+    sendJsonField("version", F(FIRMWARE_VERSION));
     sendJsonField("build_time", Rtc::GetBuildDateAndTime());
     sendJsonField("firmware_id", F(FIRMWARE_ID));
     sendJsonField("core_sdk", String(ARDUINO_ESP8266_RELEASE) + F(" / ") + ESP.getSdkVersion());

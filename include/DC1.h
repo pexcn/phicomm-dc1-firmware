@@ -99,7 +99,6 @@ public:
     void init();
     String getModuleName() { return F("dc1"); }
     String getModuleCNName() { return F("DC1插线板"); }
-    String getModuleVersion() { return F("2020.07.11.2000"); }
     bool moduleLed();
 
     void loop();
