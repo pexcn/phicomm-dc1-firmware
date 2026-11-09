@@ -35,6 +35,18 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                str(nanopb / 'pb_decode.c'), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Feed physical 4800-baud 8E1 edges through the installed serial library and meter.
+with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
+    binary = str(Path(build) / 'meter')
+    serial = root / '.pio/libdeps/dc1/EspSoftwareSerial/src'
+    ghostl = root / '.pio/libdeps/dc1/ghostl/src'
+    subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                    # The dependency's unused TX path assumes a 32-bit unsigned long.
+                    '-Wno-overflow', '-Itests/host/meter', '-Iinclude',
+                    '-I' + str(serial), '-I' + str(ghostl),
+                    'tests/host/meter/meter.cpp', 'src/CSE7766.cpp',
+                    str(serial / 'SoftwareSerial.cpp'), '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Exercise the real authentication code with the core's portable BearSSL sources.
 bear = core / 'packages/framework-arduinoespressif8266/tools/sdk/ssl/bearssl'
 with tempfile.TemporaryDirectory(prefix='dc1-auth-tests-') as build:

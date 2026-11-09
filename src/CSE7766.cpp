@@ -3,7 +3,8 @@
 CSE7766::CSE7766(uint8_t rxPin, uint16_t baudrate)
 {
     this->serial = new SoftwareSerial();
-    this->serial->begin(baudrate, SWSERIAL_8N1, rxPin, -1, false, 32);
+    // CSE7766 uses even parity; 8N1 treats LOW parity bits as invalid stop bits.
+    this->serial->begin(baudrate, SWSERIAL_8E1, rxPin, -1, false, 32);
     this->serial->enableIntTx(false);
     Cse.power_invalid = CSE_MAX_INVALID_POWER;
 }
