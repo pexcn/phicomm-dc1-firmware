@@ -26,7 +26,7 @@ let restarting = false;
 let lastUpdate = '';
 let toastTimer = 0;
 let drawerFocus = null;
-const mobile = matchMedia('(max-width: 760px)');
+const mobile = matchMedia('(max-width: 1024px)');
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 const initialHash = location.hash;
 
@@ -111,6 +111,7 @@ function navigate(focus = false) {
     route = 'overview';
   if (location.hash !== '#' + route) history.replaceState(null, '', '#' + route);
   activeView = route;
+  document.documentElement.dataset.page = route;
   $$('.view').forEach((view) => {
     view.hidden = view.id !== 'view-' + route;
   });
@@ -715,6 +716,11 @@ $('#upload-form').addEventListener('submit', async (event) => {
   xhr.send(payload);
 });
 
+function updateFirmwareName() {
+  $('#firmware-name').textContent = $('#firmware-file').files[0]?.name || '未选择文件';
+}
+$('#firmware-file').addEventListener('change', updateFirmwareName);
+
 function showLogin(setup = false, message = '') {
   loggedIn = false;
   setupRequired = setup;
@@ -733,6 +739,7 @@ function showLogin(setup = false, message = '') {
     form.reset();
     delete form.dataset.baseline;
   });
+  updateFirmwareName();
   $$('#main form > fieldset').forEach((fieldset) => {
     fieldset.disabled = true;
   });

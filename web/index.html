@@ -228,40 +228,6 @@
       </div>
 
       <section id="view-overview" class="view" aria-label="设备概览">
-        <div class="stat-grid">
-          <article class="card stat" data-module>
-            <p class="stat-label">
-              <svg class="icon"><use href="#i-bolt" /></svg>实时功率
-            </p>
-            <p class="stat-value"><span data-value="power">--</span><span class="unit">W</span></p>
-            <small>整机合计</small>
-          </article>
-          <article class="card stat" data-module>
-            <p class="stat-label">
-              <svg class="icon"><use href="#i-layers" /></svg>今日用电
-            </p>
-            <p class="stat-value">
-              <span data-value="today">--</span><span class="unit">kWh</span>
-            </p>
-            <small>昨日 <span data-value="yesterday">--</span> kWh</small>
-          </article>
-          <article class="card stat" data-module>
-            <p class="stat-label">
-              <svg class="icon"><use href="#i-chart" /></svg>累计用电
-            </p>
-            <p class="stat-value">
-              <span data-value="total">--</span><span class="unit">kWh</span>
-            </p>
-            <small>自开始统计以来</small>
-          </article>
-          <article class="card stat">
-            <p class="stat-label">
-              <svg class="icon"><use href="#i-clock" /></svg>运行时间
-            </p>
-            <p class="stat-value" id="uptime" data-value="uptime">--</p>
-            <small>当前连续运行</small>
-          </article>
-        </div>
         <section class="card relay-card" data-module>
           <div class="section-heading">
             <h2>插座控制</h2>
@@ -329,6 +295,40 @@
             </div>
           </div>
         </section>
+        <div class="stat-grid">
+          <article class="card stat" data-module>
+            <p class="stat-label">
+              <svg class="icon"><use href="#i-bolt" /></svg>实时功率
+            </p>
+            <p class="stat-value"><span data-value="power">--</span><span class="unit">W</span></p>
+            <small>整机合计</small>
+          </article>
+          <article class="card stat" data-module>
+            <p class="stat-label">
+              <svg class="icon"><use href="#i-layers" /></svg>今日用电
+            </p>
+            <p class="stat-value">
+              <span data-value="today">--</span><span class="unit">kWh</span>
+            </p>
+            <small>昨日 <span data-value="yesterday">--</span> kWh</small>
+          </article>
+          <article class="card stat" data-module>
+            <p class="stat-label">
+              <svg class="icon"><use href="#i-chart" /></svg>累计用电
+            </p>
+            <p class="stat-value">
+              <span data-value="total">--</span><span class="unit">kWh</span>
+            </p>
+            <small>自开始统计以来</small>
+          </article>
+          <article class="card stat">
+            <p class="stat-label">
+              <svg class="icon"><use href="#i-clock" /></svg>运行时间
+            </p>
+            <p class="stat-value" id="uptime" data-value="uptime">--</p>
+            <small>当前连续运行</small>
+          </article>
+        </div>
         <div class="overview-grid">
           <section class="card" data-module>
             <div class="section-heading">
@@ -421,7 +421,7 @@
                     <option value="1">互锁</option>
                   </select></label
                 >
-                <label class="field"
+                <label class="field full"
                   >分开关联动<select name="sub_kinkage">
                     <option value="0">不联动</option>
                     <option value="1">总开关关闭时禁止开启分开关</option>
@@ -489,10 +489,9 @@
                 </div>
               </details>
             </section>
-            <div class="form-actions">
-              <button class="btn" type="submit">保存设置</button
-              ><span class="save-status" role="status"></span
-              ><a class="text-link" href="#system">用电统计与存储维护</a>
+            <div class="form-actions save-bar">
+              <span class="save-status" role="status"></span>
+              <button class="btn" type="submit">保存设置</button>
             </div>
           </fieldset>
         </form>
@@ -578,13 +577,16 @@
               <h2>MQTT 连接</h2>
               <p class="hint">连接本地消息服务器，供 Home Assistant 等服务使用。</p>
               <div class="form-grid">
+                <div class="connection-fields full">
+                  <label class="field"
+                    >服务器地址<input name="mqtt_server" maxlength="39" autocomplete="off" /></label
+                  ><label class="field"
+                    >端口<input name="mqtt_port" type="number" min="0" max="65535" required /><small
+                      >0 为不启用 MQTT。</small
+                    ></label
+                  >
+                </div>
                 <label class="field"
-                  >服务器地址<input name="mqtt_server" maxlength="39" autocomplete="off" /></label
-                ><label class="field"
-                  >端口<input name="mqtt_port" type="number" min="0" max="65535" required /><small
-                    >0 为不启用 MQTT。</small
-                  ></label
-                ><label class="field"
                   >用户名<input name="mqtt_username" maxlength="19" autocomplete="off" /></label
                 ><label class="field"
                   >密码<input
@@ -655,106 +657,52 @@
       </section>
 
       <section id="view-system" class="view" aria-label="系统维护" hidden>
+        <div class="device-summary card">
+          <div><span>主机名</span><strong data-value="uid">--</strong></div>
+          <div><span>固件版本</span><strong data-value="version">--</strong></div>
+          <div>
+            <span>空闲内存</span><strong><span data-value="free_mem">--</span> kB</strong>
+          </div>
+        </div>
         <div class="maintenance-grid">
           <section class="card">
-            <h2>设备信息</h2>
-            <dl class="data-list">
-              <div>
-                <dt>主机名</dt>
-                <dd data-value="uid">--</dd>
-              </div>
-              <div>
-                <dt>固件版本</dt>
-                <dd data-value="version">--</dd>
-              </div>
-              <div>
-                <dt>编译时间</dt>
-                <dd data-value="build_time">--</dd>
-              </div>
-              <div>
-                <dt>空闲内存</dt>
-                <dd><span data-value="free_mem">--</span> kB</dd>
-              </div>
-              <div>
-                <dt>Flash 容量</dt>
-                <dd><span data-value="flash_size">--</span> kB</dd>
-              </div>
-              <div>
-                <dt>固件配置容量</dt>
-                <dd><span data-value="flash_config_size">--</span> kB</dd>
-              </div>
-              <div>
-                <dt>固件大小</dt>
-                <dd><span data-value="sketch_size">--</span> kB</dd>
-              </div>
-              <div>
-                <dt>OTA 可用空间</dt>
-                <dd><span data-value="ota_space">--</span> kB</dd>
-              </div>
-              <div>
-                <dt>内核 / SDK</dt>
-                <dd data-value="core_sdk">--</dd>
-              </div>
-              <div>
-                <dt>重启原因</dt>
-                <dd data-value="reset_reason">--</dd>
-              </div>
-              <div>
-                <dt>MAC 地址</dt>
-                <dd data-value="mac">--</dd>
-              </div>
-              <div>
-                <dt>芯片 ID</dt>
-                <dd data-value="chip_id">--</dd>
-              </div>
-              <div>
-                <dt>Flash 芯片 ID</dt>
-                <dd data-value="flash_id">--</dd>
-              </div>
-            </dl>
+            <h2>固件升级</h2>
+            <p class="hint">仅接受本项目带校验信息的新版 .bin 固件；升级期间请保持供电。</p>
+            <form id="upload-form" action="/update" method="post" enctype="multipart/form-data">
+              <fieldset disabled>
+                <div class="upload-zone">
+                  <label class="btn secondary file-picker">
+                    <svg class="icon"><use href="#i-upload" /></svg>选择固件文件
+                    <input
+                      id="firmware-file"
+                      class="visually-hidden"
+                      name="update"
+                      type="file"
+                      accept=".bin"
+                      required
+                      aria-label="应用固件文件"
+                    />
+                  </label>
+                  <span id="firmware-name" class="file-name">未选择文件</span>
+                  <button id="upload-button" class="btn" type="submit">上传并升级</button>
+                </div>
+              </fieldset>
+            </form>
+            <progress
+              id="upload-progress"
+              max="100"
+              value="0"
+              aria-label="固件上传进度"
+              hidden
+            ></progress>
+            <p id="upload-status" class="hint" role="status"></p>
           </section>
-          <section class="card" data-module>
-            <h2>用电统计与存储</h2>
-            <p class="hint">用电量每 8 小时及跨日保存，突然断电可能丢失尚未保存的增量。</p>
-            <dl class="data-list">
-              <div>
-                <dt>文件系统</dt>
-                <dd data-value="runtime_storage">--</dd>
-              </div>
-              <div>
-                <dt>开关记忆</dt>
-                <dd data-value="relay_record">--</dd>
-              </div>
-              <div>
-                <dt>电量记录</dt>
-                <dd data-value="energy_record">--</dd>
-              </div>
-              <div>
-                <dt>开始统计</dt>
-                <dd data-value="starttime">--</dd>
-              </div>
-              <div>
-                <dt>昨日用电</dt>
-                <dd><span data-value="yesterday">--</span> kWh</dd>
-              </div>
-            </dl>
-            <div class="form-actions">
-              <button class="btn secondary" type="button" id="initialize-storage" hidden>
-                初始化存储</button
-              ><button class="btn secondary" type="button" id="recover-relay" hidden>
-                恢复开关记忆</button
-              ><button class="btn danger" type="button" id="recover-energy" hidden>
-                重新开始电量统计
-              </button>
-            </div>
-            <p class="caption">仅在首次使用或出现异常时，按提示初始化或恢复对应记录。</p>
-          </section>
-          <form class="card wide" id="password-form" action="/password" method="post">
+          <form class="card" id="password-form" action="/password" method="post">
             <fieldset disabled>
               <h2>管理密码</h2>
               <p class="hint">修改后，其他设备需要重新登录。</p>
               <div class="form-grid">
-                <label class="field"
+                <label class="field full current-password"
                   >当前密码<input
                     name="password"
                     type="password"
@@ -788,69 +736,133 @@
               </div>
             </fieldset>
           </form>
+          <section class="card" data-module>
+            <h2>用电统计与存储</h2>
+            <p class="hint">用电量每 8 小时及跨日保存，突然断电可能丢失尚未保存的增量。</p>
+            <dl class="data-list">
+              <div>
+                <dt>文件系统</dt>
+                <dd data-value="runtime_storage">--</dd>
+              </div>
+              <div>
+                <dt>开关记忆</dt>
+                <dd data-value="relay_record">--</dd>
+              </div>
+              <div>
+                <dt>电量记录</dt>
+                <dd data-value="energy_record">--</dd>
+              </div>
+            </dl>
+            <details class="inline-details">
+              <summary>统计详情</summary>
+              <dl class="data-list">
+                <div>
+                  <dt>开始统计</dt>
+                  <dd data-value="starttime">--</dd>
+                </div>
+                <div>
+                  <dt>昨日用电</dt>
+                  <dd><span data-value="yesterday">--</span> kWh</dd>
+                </div>
+              </dl>
+            </details>
+            <div class="form-actions recovery-actions">
+              <button class="btn secondary" type="button" id="initialize-storage" hidden>
+                初始化存储</button
+              ><button class="btn secondary" type="button" id="recover-relay" hidden>
+                恢复开关记忆</button
+              ><button class="btn danger" type="button" id="recover-energy" hidden>
+                重新开始电量统计
+              </button>
+            </div>
+            <p class="caption">仅在首次使用或出现异常时，按提示初始化或恢复对应记录。</p>
+          </section>
+          <details class="card advanced">
+            <summary>设备与硬件详情</summary>
+            <div class="advanced-content">
+              <dl class="data-list">
+                <div>
+                  <dt>编译时间</dt>
+                  <dd data-value="build_time">--</dd>
+                </div>
+                <div>
+                  <dt>Flash 容量</dt>
+                  <dd><span data-value="flash_size">--</span> kB</dd>
+                </div>
+                <div>
+                  <dt>固件配置容量</dt>
+                  <dd><span data-value="flash_config_size">--</span> kB</dd>
+                </div>
+                <div>
+                  <dt>固件大小</dt>
+                  <dd><span data-value="sketch_size">--</span> kB</dd>
+                </div>
+                <div>
+                  <dt>OTA 可用空间</dt>
+                  <dd><span data-value="ota_space">--</span> kB</dd>
+                </div>
+                <div>
+                  <dt>内核 / SDK</dt>
+                  <dd data-value="core_sdk">--</dd>
+                </div>
+                <div>
+                  <dt>重启原因</dt>
+                  <dd data-value="reset_reason">--</dd>
+                </div>
+                <div>
+                  <dt>MAC 地址</dt>
+                  <dd data-value="mac">--</dd>
+                </div>
+                <div>
+                  <dt>芯片 ID</dt>
+                  <dd data-value="chip_id">--</dd>
+                </div>
+                <div>
+                  <dt>Flash 芯片 ID</dt>
+                  <dd data-value="flash_id">--</dd>
+                </div>
+              </dl>
+            </div>
+          </details>
           <form
-            class="card wide"
+            class="card advanced"
             id="module-form"
             data-settings
             action="/module_setting"
             method="post"
           >
             <fieldset disabled>
-              <h2>设备与日志设置</h2>
-              <div class="form-grid">
-                <label class="field"
-                  >主机名<input name="uid" maxlength="15" autocomplete="off" /><small
-                    >留空使用默认名称；更改后设备会重启。</small
-                  ></label
-                ><label class="field"
-                  >NTP 服务器<input name="ntp" maxlength="39" autocomplete="off" /><small
-                    >用于设备校时。</small
-                  ></label
-                >
-              </div>
-              <div class="check-row">
-                <label class="check"
-                  ><input name="log_serial" type="checkbox" value="1" />Serial</label
-                ><label class="check"
-                  ><input name="log_serial1" type="checkbox" value="1" />Serial1</label
-                ><label class="check" data-feature="logs"
-                  ><input name="log_web" type="checkbox" value="1" />网页日志</label
-                >
-              </div>
-              <div class="form-actions">
-                <button class="btn" type="submit">保存设备设置</button
-                ><span class="save-status" role="status"></span>
-              </div>
+              <details>
+                <summary>设备与日志设置</summary>
+                <div class="advanced-content">
+                  <div class="form-grid">
+                    <label class="field"
+                      >主机名<input name="uid" maxlength="15" autocomplete="off" /><small
+                        >留空使用默认名称；更改后设备会重启。</small
+                      ></label
+                    ><label class="field"
+                      >NTP 服务器<input name="ntp" maxlength="39" autocomplete="off" /><small
+                        >用于设备校时。</small
+                      ></label
+                    >
+                  </div>
+                  <div class="check-row">
+                    <label class="check"
+                      ><input name="log_serial" type="checkbox" value="1" />Serial</label
+                    ><label class="check"
+                      ><input name="log_serial1" type="checkbox" value="1" />Serial1</label
+                    ><label class="check" data-feature="logs"
+                      ><input name="log_web" type="checkbox" value="1" />网页日志</label
+                    >
+                  </div>
+                  <div class="form-actions">
+                    <button class="btn" type="submit">保存设备设置</button
+                    ><span class="save-status" role="status"></span>
+                  </div>
+                </div>
+              </details>
             </fieldset>
           </form>
-          <section class="card wide">
-            <h2>固件升级</h2>
-            <p class="hint">仅接受本项目带校验信息的新版 .bin 固件；升级期间请保持供电。</p>
-            <form id="upload-form" action="/update" method="post" enctype="multipart/form-data">
-              <fieldset disabled>
-                <label class="upload-zone"
-                  ><svg class="icon"><use href="#i-upload" /></svg><strong>选择固件文件</strong
-                  ><input
-                    name="update"
-                    type="file"
-                    accept=".bin"
-                    required
-                    aria-label="应用固件文件"
-                /></label>
-                <div class="form-actions">
-                  <button id="upload-button" class="btn" type="submit">上传并升级</button>
-                </div>
-              </fieldset>
-            </form>
-            <progress
-              id="upload-progress"
-              max="100"
-              value="0"
-              aria-label="固件上传进度"
-              hidden
-            ></progress>
-            <p id="upload-status" class="hint" role="status"></p>
-          </section>
         </div>
         <section class="card danger-section">
           <h2>重启与重置</h2>
