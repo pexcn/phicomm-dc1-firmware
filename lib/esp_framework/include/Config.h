@@ -40,14 +40,14 @@ class Config
 private:
     static bool savePending;
     static unsigned long saveAt;
-    static bool writeConfig();
+    static bool writeConfig(bool updateModule = true);
 
 public:
     static uint16_t crc16(uint8_t *ptr, uint16_t len);
 
     static void readConfig();
     static void resetConfig();
-    static bool saveConfig();
+    static bool saveConfig(bool updateModule = true);
     static bool prepareRestart();
 
     static bool moduleReadConfig(uint16_t version, uint16_t size, const pb_msgdesc_t *fields, void *dest_struct);

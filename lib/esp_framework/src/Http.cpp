@@ -1,7 +1,9 @@
 #include <ESP8266WebServer.h>
+#include <ctype.h>
 #include "FirmwareUpload.h"
 #include <WiFiUdp.h>
 #include "Http.h"
+#include "WebAuth.h"
 #include "Module.h"
 #include "Rtc.h"
 #include "WebAssets.h"
@@ -10,6 +12,152 @@ ESP8266WebServer *Http::server;
 bool Http::isBegin = false;
 
 namespace {
+static_assert(sizeof(globalConfig.http.pass) == WebAuth::PASSWORD_SIZE, "Password record size mismatch");
+WebAuth webAuth;
+
+const char *sessionToken(char token[WebAuth::TOKEN_SIZE])
+{
+    token[0] = 0;
+    const String &cookies = Http::server->header(F("Cookie"));
+    if (cookies.length() == 0) return token;
+    const char *item = cookies.c_str();
+    const char *limit = item + cookies.length();
+    while (item < limit)
+    {
+        const char *separator = static_cast<const char *>(memchr(item, ';', limit - item));
+        const char *end = separator ? separator : limit;
+        while (item < end && isspace(static_cast<unsigned char>(*item))) ++item;
+        while (end > item && isspace(static_cast<unsigned char>(end[-1]))) --end;
+        const size_t prefixLength = sizeof("dc1_session=") - 1;
+        if (size_t(end - item) >= prefixLength
+            && memcmp_P(item, PSTR("dc1_session="), prefixLength) == 0)
+        {
+            item += prefixLength;
+            if (size_t(end - item) == WebAuth::TOKEN_SIZE - 1)
+            {
+                memcpy(token, item, WebAuth::TOKEN_SIZE - 1);
+                token[WebAuth::TOKEN_SIZE - 1] = 0;
+            }
+            return token;
+        }
+        if (!separator) break;
+        item = separator + 1;
+    }
+    return token;
+}
+void clearCookie()
+{
+    Http::server->sendHeader(F("Set-Cookie"),
+        F("dc1_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"));
+}
+bool clientRequest(bool respond = true)
+{
+    if (Http::server->header(F("X-DC1-Request")) == F("1")) return true;
+    if (respond) Http::server->send_P(403, PSTR("application/json"),
+        PSTR("{\"code\":0,\"msg\":\"请求来源无效，请使用设备管理页面。\"}"));
+    return false;
+}
+bool issueSession()
+{
+    char token[WebAuth::TOKEN_SIZE];
+    if (!webAuth.issue(token))
+    {
+        Http::server->send_P(503, PSTR("application/json"),
+            PSTR("{\"code\":0,\"msg\":\"无法创建登录会话，请稍后重试。\"}"));
+        return false;
+    }
+    Http::server->sendHeader(F("Set-Cookie"), String(F("dc1_session=")) + token
+        + F("; Path=/; HttpOnly; SameSite=Strict"));
+    return true;
+}
+void authStatus()
+{
+    Http::server->sendHeader(F("Cache-Control"), F("no-store"));
+    if (!clientRequest()) return;
+    char token[WebAuth::TOKEN_SIZE];
+    bool authenticated = webAuth.authorize(sessionToken(token));
+    snprintf_P(tmpData, sizeof(tmpData),
+        PSTR("{\"code\":1,\"data\":{\"authenticated\":%d,\"setup_required\":%d}}"),
+        authenticated, globalConfig.http.pass[0] == 0);
+    Http::server->send(200, F("application/json"), tmpData);
+}
+bool passwordAttempt()
+{
+    String password = Http::server->arg(F("password"));
+    if (password.length() == strlen(password.c_str())
+        && WebAuth::verifyPassword(password.c_str(), globalConfig.http.pass))
+    {
+        return true;
+    }
+    Http::server->send_P(401, PSTR("application/json"),
+        PSTR("{\"code\":0,\"msg\":\"密码不正确，请重试。\"}"));
+    return false;
+}
+bool storePassword(const String &password)
+{
+    if (password.length() < 8 || password.length() > 64
+        || password.length() != strlen(password.c_str()))
+    {
+        Http::server->send_P(400, PSTR("application/json"),
+            PSTR("{\"code\":0,\"msg\":\"密码过短或过长，请使用 8–64 位字母、数字或符号。\"}"));
+        return false;
+    }
+    char record[WebAuth::PASSWORD_SIZE];
+    if (!WebAuth::makePassword(password.c_str(), record))
+    {
+        Http::server->send_P(503, PSTR("application/json"),
+            PSTR("{\"code\":0,\"msg\":\"无法设置密码，请稍后重试。\"}"));
+        return false;
+    }
+    char previous[sizeof(globalConfig.http.pass)];
+    memcpy(previous, globalConfig.http.pass, sizeof(previous));
+    memcpy(globalConfig.http.pass, record, sizeof(record));
+    // Keep the old module payload intact, even before LittleFS is initialized.
+    if (!Config::saveConfig(false))
+    {
+        memcpy(globalConfig.http.pass, previous, sizeof(previous));
+        Http::server->send_P(500, PSTR("application/json"),
+            PSTR("{\"code\":0,\"msg\":\"密码保存失败，未应用本次修改，请稍后重试。\"}"));
+        return false;
+    }
+    return true;
+}
+void login()
+{
+    Http::server->sendHeader(F("Cache-Control"), F("no-store"));
+    if (!clientRequest()) return;
+    if (globalConfig.http.pass[0] == 0)
+    {
+        if (!storePassword(Http::server->arg(F("password")))) return;
+    }
+    else if (!passwordAttempt()) return;
+    if (!issueSession()) return;
+    Http::server->send_P(200, PSTR("application/json"), PSTR("{\"code\":1}"));
+}
+void logout()
+{
+    if (!Http::checkAuth()) return;
+    char token[WebAuth::TOKEN_SIZE];
+    webAuth.revoke(sessionToken(token));
+    clearCookie();
+    Http::server->send_P(200, PSTR("application/json"), PSTR("{\"code\":1}"));
+}
+void changePassword()
+{
+    if (!Http::checkAuth() || !passwordAttempt()) return;
+    if (Http::server->arg(F("new_password")) == Http::server->arg(F("password")))
+    {
+        Http::server->send_P(200, PSTR("application/json"),
+            PSTR("{\"code\":1,\"msg\":\"密码未改变，无需保存。\"}"));
+        return;
+    }
+    if (!storePassword(Http::server->arg(F("new_password")))) return;
+    webAuth.clear();
+    if (!issueSession()) return;
+    Http::server->send_P(200, PSTR("application/json"),
+        PSTR("{\"code\":1,\"msg\":\"管理密码已修改，其他设备需要重新登录。\"}"));
+}
+
 bool argumentFits(const char *name, size_t capacity)
 {
     if (Http::server->arg(name).length() < capacity) return true;
@@ -40,7 +188,6 @@ void sendJsonField(const char *key, const String &value)
 
 void sendWebAsset(const uint8_t *asset, size_t length, const char *contentType)
 {
-    if (!Http::checkAuth()) return;
     Http::server->sendHeader(F("Content-Encoding"), F("gzip"));
     Http::server->sendHeader(F("Cache-Control"), F("no-cache"));
     Http::server->send_P(200, contentType, reinterpret_cast<const char *>(asset), length);
@@ -634,7 +781,7 @@ void Http::handleUpdate()
                 {
                     uploadAllowed = uploadComplete = uploadSaveFailed = uploadImageFailed = false;
                     firmware.cancel();
-                    if (globalConfig.http.user[0] != 0 && globalConfig.http.pass[0] != 0 && server->client().localIP().toString() != "192.168.4.1" && !server->authenticate(globalConfig.http.user, globalConfig.http.pass))
+                    if (!checkAuth(false))
                     {
                         Debug::AddInfo(PSTR("Unauthenticated Update"));
                         return;
@@ -679,6 +826,11 @@ void Http::begin()
     }
     isBegin = true;
     server = new ESP8266WebServer();
+    server->collectHeaders("Cookie", "X-DC1-Request");
+    server->on(F("/auth"), HTTP_POST, authStatus);
+    server->on(F("/login"), HTTP_POST, login);
+    server->on(F("/logout"), HTTP_POST, logout);
+    server->on(F("/password"), HTTP_POST, changePassword);
 
     server->on(F("/"), HTTP_GET, handleRoot);
     server->on(F("/style.css"), HTTP_GET, []() {
@@ -689,17 +841,17 @@ void Http::begin()
     });
     server->on(F("/get_config"), HTTP_POST, handleConfig);
 #ifndef DISABLE_MQTT
-    server->on(F("/mqtt"), handleMqtt);
+    server->on(F("/mqtt"), HTTP_POST, handleMqtt);
 #ifndef DISABLE_MQTT_DISCOVERY
-    server->on(F("/discovery"), handleDiscovery);
+    server->on(F("/discovery"), HTTP_POST, handleDiscovery);
 #endif
 #endif
-    server->on(F("/dhcp"), handledhcp);
-    server->on(F("/scan_wifi"), handleScanWifi);
-    server->on(F("/wifi"), handleWifi);
-    server->on(F("/operate"), handleOperate);
-    server->on(F("/module_setting"), handleModuleSetting);
-    server->on(F("/get_status"), handleGetStatus);
+    server->on(F("/dhcp"), HTTP_POST, handledhcp);
+    server->on(F("/scan_wifi"), HTTP_POST, handleScanWifi);
+    server->on(F("/wifi"), HTTP_POST, handleWifi);
+    server->on(F("/operate"), HTTP_POST, handleOperate);
+    server->on(F("/module_setting"), HTTP_POST, handleModuleSetting);
+    server->on(F("/get_status"), HTTP_POST, handleGetStatus);
     server->onNotFound(handleNotFound);
     handleUpdate();
 
@@ -804,17 +956,19 @@ void Http::handleModuleSetting()
     }
 }
 
-bool Http::checkAuth()
+bool Http::checkAuth(bool respond)
 {
-    if (globalConfig.http.user[0] != 0 && globalConfig.http.pass[0] != 0 && server->client().localIP().toString() != F("192.168.4.1"))
+    if (respond) server->sendHeader(F("Cache-Control"), F("no-store"));
+    if (server->method() != HTTP_GET && !clientRequest(respond)) return false;
+    char token[WebAuth::TOKEN_SIZE];
+    if (webAuth.authorize(sessionToken(token))) return true;
+    if (respond)
     {
-        if (!server->authenticate(globalConfig.http.user, globalConfig.http.pass))
-        {
-            server->requestAuthentication();
-            return false;
-        }
+        clearCookie();
+        server->send_P(401, PSTR("application/json"),
+            PSTR("{\"code\":0,\"msg\":\"请先登录设备。\"}"));
     }
-    return true;
+    return false;
 }
 
 bool Http::saveConfigOrError()

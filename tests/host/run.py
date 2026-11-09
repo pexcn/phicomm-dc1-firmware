@@ -35,6 +35,23 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                str(nanopb / 'pb_decode.c'), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Exercise the real authentication code with the core's portable BearSSL sources.
+bear = core / 'packages/framework-arduinoespressif8266/tools/sdk/ssl/bearssl'
+with tempfile.TemporaryDirectory(prefix='dc1-auth-tests-') as build:
+    objects = []
+    for name in ['hash/sha2small', 'codec/dec32be', 'codec/enc32be']:
+        obj = str(Path(build) / (Path(name).name + '.o'))
+        subprocess.run(['gcc', '-std=c99', '-I' + str(root / 'tests/host/auth'),
+                        '-I' + str(bear / 'inc'), '-I' + str(bear / 'src'),
+                        '-c', str(bear / 'src' / (name + '.c')), '-o', obj], check=True)
+        objects.append(obj)
+    binary = str(Path(build) / 'auth')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-Itests/host/auth', '-Itests/host/stubs', '-Ilib/esp_framework/include',
+                    '-I' + str(bear.parents[1] / 'include'), '-I' + str(bear / 'inc'),
+                    'tests/host/auth/auth.cpp', 'lib/esp_framework/src/WebAuth.cpp',
+                    *objects, '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Check the published binary envelope and the streaming activation gate.
 firmware = root / '.pio/build/dc1/firmware.bin'
 image = firmware.read_bytes()

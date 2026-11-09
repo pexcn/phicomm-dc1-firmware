@@ -4,3 +4,4 @@
 #include <string.h>
 #define PSTR(text) text
 unsigned long millis();
+uint64_t micros64();

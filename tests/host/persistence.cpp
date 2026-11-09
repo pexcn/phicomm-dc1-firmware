@@ -93,6 +93,25 @@ static void testRestartPreparation()
     current.failFlush = false;
     assert(Config::prepareRestart());
     assert(current.flushes == 2 && erases[CONFIG / 4096] == before + 1);
+    // Password setup can preserve the old embedded payload while migration is blocked.
+    current.failSave = true;
+    assert(!Config::saveConfig());
+    uint8_t legacy[] = {0x10, 0x01, 0x20, 0x02};
+    globalConfig.module_cfg.size = sizeof(legacy);
+    memcpy(globalConfig.module_cfg.bytes, legacy, sizeof(legacy));
+    strcpy(globalConfig.http.pass, "2$000102030405060708090a0b0c0d0e0f$6bb6535cc4adff6d2138573f125b9fea7135129df687ca37139a6720c5c8b8e0");
+    assert(Config::saveConfig(false));
+    assert(globalConfig.module_cfg.size == sizeof(legacy)
+        && memcmp(globalConfig.module_cfg.bytes, legacy, sizeof(legacy)) == 0);
+    auto saved = globalConfig;
+    memset(&globalConfig, 0, sizeof(globalConfig));
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &saved, sizeof(globalConfig)) == 0);
+    unsigned saves = current.saves;
+    current.failSave = false;
+    now += 60000;
+    Config::loop();
+    assert(current.saves == saves + 1); // Global-only saves retain pending module retries.
     module = nullptr;
 }
 
@@ -121,10 +140,11 @@ static void testRetiredConfigFields()
     memset(retired, 'u', sizeof(retired));
     HttpConfigMessage http = {};
     http.port = 8080;
-    strcpy(http.user, "admin");
     strcpy(http.pass, "secret");
     auto submessage = pb_ostream_from_buffer(oldHttp, sizeof(oldHttp));
     assert(pb_encode(&submessage, HttpConfigMessage_fields, &http));
+    assert(pb_encode_tag(&submessage, PB_WT_STRING, 2));
+    assert(pb_encode_string(&submessage, reinterpret_cast<const uint8_t *>("admin"), 5));
     assert(pb_encode_tag(&submessage, PB_WT_STRING, 4));
     assert(pb_encode_string(&submessage, retired, sizeof(retired)));
     uint8_t oldDebug[64];
@@ -154,7 +174,7 @@ static void testRetiredConfigFields()
     Config::readConfig();
     assert(strcmp(globalConfig.wifi.ssid, expected.wifi.ssid) == 0);
     assert(strcmp(globalConfig.mqtt.pass, expected.mqtt.pass) == 0);
-    assert(globalConfig.http.port == http.port && strcmp(globalConfig.http.user, http.user) == 0);
+    assert(globalConfig.http.port == http.port);
     assert(strcmp(globalConfig.http.pass, http.pass) == 0);
     assert(globalConfig.debug.type == debug.type);
     assert(Config::saveConfig());

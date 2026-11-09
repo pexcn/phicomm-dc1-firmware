@@ -351,10 +351,10 @@ void DC1::mqttDiscovery(bool isEnable)
 
 void DC1::httpAdd(ESP8266WebServer *server)
 {
-    server->on(F("/dc1_do"), std::bind(&DC1::httpDo, this, server));
-    server->on(F("/dc1_setting"), std::bind(&DC1::httpSetting, this, server));
+    server->on(F("/dc1_do"), HTTP_POST, std::bind(&DC1::httpDo, this, server));
+    server->on(F("/dc1_setting"), HTTP_POST, std::bind(&DC1::httpSetting, this, server));
     server->on(F("/dc1_storage"), HTTP_POST, std::bind(&DC1::httpStorage, this, server));
-    server->on(F("/ha"), std::bind(&DC1::httpHa, this, server));
+    server->on(F("/ha"), HTTP_GET, std::bind(&DC1::httpHa, this, server));
 }
 
 String DC1::httpGetStatus(ESP8266WebServer *server)
@@ -504,6 +504,7 @@ void DC1::httpStorage(ESP8266WebServer *server)
 
 void DC1::httpHa(ESP8266WebServer *server)
 {
+    if (!Http::checkAuth()) return;
     char attachment[100];
     snprintf_P(attachment, sizeof(attachment), PSTR("attachment; filename=%s.yaml"), UID);
 

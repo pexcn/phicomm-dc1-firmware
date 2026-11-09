@@ -24,10 +24,22 @@
     <link rel="stylesheet" href="/style.css" />
     <script src="/app.js" defer></script>
   </head>
-  <body class="stale">
+  <body class="stale auth-screen">
     <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <symbol id="i-plug" viewBox="0 0 24 24">
         <path d="M8 3v6m8-6v6M5 9h14v4a7 7 0 0 1-14 0V9Zm7 11v3" />
+      </symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24">
+        <path d="M10 4H5v16h5m4-12 4 4-4 4m-5-4h13" />
+      </symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24">
+        <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24">
+        <path
+          d="m3 3 18 18M10 5c7-1 12 7 12 7a22 22 0 0 1-4 4M6 6a22 22 0 0 0-4 6s4 7 10 7c2 0 4-1 5-2m-7-7 4 4"
+        />
       </symbol>
       <symbol id="i-home" viewBox="0 0 24 24">
         <path d="m3 10 9-7 9 7v10H3V10Zm6 10v-7h6v7" />
@@ -78,6 +90,60 @@
         <path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10Z" />
       </symbol>
     </svg>
+    <section id="login-screen" class="login-screen" aria-labelledby="login-title">
+      <button
+        id="login-theme-toggle"
+        class="icon-btn login-theme"
+        type="button"
+        data-theme-toggle
+        aria-label="切换主题，当前跟随系统"
+      >
+        <svg class="icon"><use href="#i-system" /></svg>
+      </button>
+      <div class="login-container">
+        <div class="login-card">
+          <div class="login-logo">
+            <svg class="icon"><use href="#i-plug" /></svg>
+          </div>
+          <h1 id="login-title">DC1 智能插排</h1>
+          <p id="login-description">输入管理密码，登录设备</p>
+          <form id="login-form" method="post" action="/login">
+            <fieldset disabled>
+              <label class="field" for="login-password">管理密码</label>
+              <div class="password-field">
+                <input
+                  id="login-password"
+                  name="password"
+                  type="password"
+                  maxlength="64"
+                  required
+                  autocomplete="current-password"
+                  aria-describedby="login-hint login-error"
+                />
+                <button
+                  class="icon-btn"
+                  type="button"
+                  data-password-toggle="login-password"
+                  aria-label="显示密码"
+                  aria-pressed="false"
+                >
+                  <svg class="icon"><use href="#i-eye" /></svg>
+                </button>
+              </div>
+              <p id="login-hint" class="hint" hidden>至少 8 位，建议使用字母、数字和符号。</p>
+              <p id="login-error" class="auth-error" role="alert" hidden></p>
+              <button id="login-submit" class="btn" type="submit">
+                登录 <span aria-hidden="true">→</span>
+              </button>
+            </fieldset>
+          </form>
+          <p id="login-status" class="hint" role="status">正在连接设备…</p>
+          <button id="login-retry" class="text-link" type="button" hidden>重新连接</button>
+          <noscript><p class="auth-error">请启用 JavaScript 后登录设备。</p></noscript>
+        </div>
+        <p class="login-footer">本地连接 · 无需云服务</p>
+      </div>
+    </section>
     <button
       id="backdrop"
       class="backdrop"
@@ -109,7 +175,11 @@
           ><svg class="icon"><use href="#i-settings" /></svg>系统维护</a
         >
       </nav>
-      <div class="sidebar-footer">ESP8266 · 本地设备管理</div>
+      <div class="sidebar-footer">
+        <button id="logout" class="btn logout-btn" type="button">
+          <svg class="icon"><use href="#i-logout" /></svg>退出登录
+        </button>
+      </div>
     </aside>
     <header id="topbar" class="topbar">
       <div class="topbar-left">
@@ -128,6 +198,7 @@
           ><span class="dot"></span><span id="connection-label">连接中</span></span
         ><button
           id="theme-toggle"
+          data-theme-toggle
           class="icon-btn"
           type="button"
           title="跟随系统"
@@ -330,7 +401,7 @@
       </section>
 
       <section id="view-settings" class="view" aria-label="插座设置" hidden>
-        <form id="socket-form" class="form-stack" action="/dc1_setting" method="post">
+        <form id="socket-form" data-settings class="form-stack" action="/dc1_setting" method="post">
           <fieldset disabled>
             <section class="card">
               <h2>上电与开关</h2>
@@ -429,7 +500,7 @@
 
       <section id="view-network" class="view" aria-label="网络与连接" hidden>
         <div class="form-stack">
-          <form class="card" id="wifi-form" action="/wifi" method="post">
+          <form class="card" id="wifi-form" data-settings action="/wifi" method="post">
             <fieldset disabled>
               <h2>Wi-Fi 网络</h2>
               <p class="hint">选择家庭网络，或手动输入名称。</p>
@@ -459,7 +530,7 @@
               </div>
             </fieldset>
           </form>
-          <form class="card advanced" id="dhcp-form" action="/dhcp" method="post">
+          <form class="card advanced" id="dhcp-form" data-settings action="/dhcp" method="post">
             <fieldset disabled>
               <details>
                 <summary>Wi-Fi 高级设置</summary>
@@ -495,7 +566,14 @@
               </details>
             </fieldset>
           </form>
-          <form class="card" id="mqtt-form" action="/mqtt" method="post" data-feature="mqtt">
+          <form
+            class="card"
+            id="mqtt-form"
+            data-settings
+            action="/mqtt"
+            method="post"
+            data-feature="mqtt"
+          >
             <fieldset disabled>
               <h2>MQTT 连接</h2>
               <p class="hint">连接本地消息服务器，供 Home Assistant 等服务使用。</p>
@@ -539,6 +617,7 @@
           <form
             class="card"
             id="discovery-form"
+            data-settings
             action="/discovery"
             method="post"
             data-feature="discovery"
@@ -670,7 +749,52 @@
             </div>
             <p class="caption">仅在首次使用或出现异常时，按提示初始化或恢复对应记录。</p>
           </section>
-          <form class="card wide" id="module-form" action="/module_setting" method="post">
+          <form class="card wide" id="password-form" action="/password" method="post">
+            <fieldset disabled>
+              <h2>管理密码</h2>
+              <p class="hint">修改后，其他设备需要重新登录。</p>
+              <div class="form-grid">
+                <label class="field"
+                  >当前密码<input
+                    name="password"
+                    type="password"
+                    maxlength="64"
+                    required
+                    autocomplete="current-password"
+                /></label>
+                <label class="field"
+                  >新密码<input
+                    name="new_password"
+                    type="password"
+                    minlength="8"
+                    maxlength="64"
+                    required
+                    autocomplete="new-password"
+                  /><small>至少 8 位，建议使用字母、数字和符号。</small></label
+                >
+                <label class="field"
+                  >确认新密码<input
+                    name="confirm_password"
+                    type="password"
+                    minlength="8"
+                    maxlength="64"
+                    required
+                    autocomplete="new-password"
+                /></label>
+              </div>
+              <div class="form-actions">
+                <button class="btn" type="submit">修改密码</button
+                ><span id="password-status" role="status"></span>
+              </div>
+            </fieldset>
+          </form>
+          <form
+            class="card wide"
+            id="module-form"
+            data-settings
+            action="/module_setting"
+            method="post"
+          >
             <fieldset disabled>
               <h2>设备与日志设置</h2>
               <div class="form-grid">

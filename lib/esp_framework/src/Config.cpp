@@ -115,11 +115,11 @@ void Config::readConfig()
     }
 }
 
-bool Config::saveConfig()
+bool Config::saveConfig(bool updateModule)
 {
-    if (writeConfig())
+    if (writeConfig(updateModule))
     {
-        savePending = false;
+        if (updateModule) savePending = false;
         return true;
     }
     // Keep failed changes pending; never treat a failed write as committed.
@@ -138,9 +138,10 @@ bool Config::prepareRestart()
     return saveConfig();
 }
 
-bool Config::writeConfig()
+bool Config::writeConfig(bool updateModule)
 {
-    if (module && !module->saveConfig())
+    // Access changes preserve the embedded legacy payload until runtime migration is safe.
+    if (updateModule && module && !module->saveConfig())
     {
         return false;
     }

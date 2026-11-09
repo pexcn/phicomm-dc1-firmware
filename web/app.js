@@ -10,6 +10,9 @@ const routes = {
   system: ['系统维护', '查看设备信息、管理存储与升级固件。', '系统维护']
 };
 let config = null;
+let loggedIn = false;
+let setupRequired = false;
+let authBusy = false;
 let activeView = 'overview';
 let online = false;
 let timer = 0;
@@ -32,23 +35,27 @@ function updateTheme() {
   document.documentElement.dataset.theme =
     mode === 'system' ? (systemTheme.matches ? 'dark' : 'light') : mode;
   const label = { system: '跟随系统', light: '浅色模式', dark: '深色模式' }[mode];
-  $('#theme-icon').setAttribute(
-    'href',
-    '#i-' + { system: 'system', light: 'sun', dark: 'moon' }[mode]
-  );
-  $('#theme-toggle').title = label;
-  $('#theme-toggle').setAttribute('aria-label', '切换主题，当前' + label);
+  $$('[data-theme-toggle]').forEach((button) => {
+    $('use', button).setAttribute(
+      'href',
+      '#i-' + { system: 'system', light: 'sun', dark: 'moon' }[mode]
+    );
+    button.title = label;
+    button.setAttribute('aria-label', '切换主题，当前' + label);
+  });
 }
-$('#theme-toggle').addEventListener('click', () => {
-  const modes = ['system', 'light', 'dark'];
-  const mode =
-    modes[(modes.indexOf(document.documentElement.dataset.themeMode) + 1) % modes.length];
-  document.documentElement.dataset.themeMode = mode;
-  try {
-    localStorage.setItem('dc1-theme', mode);
-  } catch (_) {}
-  updateTheme();
-});
+$$('[data-theme-toggle]').forEach((button) =>
+  button.addEventListener('click', () => {
+    const modes = ['system', 'light', 'dark'];
+    const mode =
+      modes[(modes.indexOf(document.documentElement.dataset.themeMode) + 1) % modes.length];
+    document.documentElement.dataset.themeMode = mode;
+    try {
+      localStorage.setItem('dc1-theme', mode);
+    } catch (_) {}
+    updateTheme();
+  })
+);
 systemTheme.addEventListener('change', updateTheme);
 updateTheme();
 
@@ -153,8 +160,13 @@ async function request(path, data = {}, timeout = 12000) {
       method: 'POST',
       body: data instanceof URLSearchParams ? data : new URLSearchParams(data),
       cache: 'no-store',
+      credentials: 'same-origin',
+      headers: { 'X-DC1-Request': '1' },
       signal: controller.signal
     });
+    if (response.status === 401 && path !== '/login' && path !== '/password') {
+      showLogin(false, '登录已失效，请重新登录。');
+    }
     let result;
     try {
       result = await response.json();
@@ -307,7 +319,22 @@ async function pollStatus(manual = false) {
     schedulePoll(activeView === 'logs' ? 1000 : 3000);
   }
 }
-document.addEventListener('visibilitychange', () => schedulePoll(0));
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || !loggedIn) return;
+  try {
+    const { data } = await request('/auth');
+    if (!data.authenticated) showLogin(Boolean(data.setup_required), '登录已失效，请重新登录。');
+    else schedulePoll(0);
+  } catch {
+    schedulePoll(0);
+  }
+});
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    showLogin();
+    checkLogin();
+  }
+});
 $('#log-auto').addEventListener('change', () => schedulePoll(0));
 $('#log-refresh').addEventListener('click', () => pollStatus(true));
 $('#log-clear').addEventListener('click', () => {
@@ -340,7 +367,9 @@ function configureFeatures(features) {
 async function loadConfig() {
   $('#retry-config').disabled = true;
   try {
+    const currentRevision = revision;
     const result = await request('/get_config');
+    if (!loggedIn || revision !== currentRevision) return;
     const data = result.data;
     if (!data || !data.features || !data.device || !data.fields || !data.module) {
       throw Error('设备返回的设置不完整，请刷新后重试。');
@@ -348,18 +377,18 @@ async function loadConfig() {
     config = data;
     setValues(config.device);
     const fields = { ...config.fields, ...config.module };
-    $$('form:not(#upload-form)').forEach((form) => {
+    $$('form[data-settings]').forEach((form) => {
       $$('[name]', form).forEach((input) => {
         if (!Object.hasOwn(fields, input.name)) return;
         if (input.type === 'checkbox') input.checked = Boolean(Number(fields[input.name]));
         else input.value = fields[input.name];
       });
     });
-    $$('form > fieldset').forEach((fieldset) => {
+    $$('#main form > fieldset').forEach((fieldset) => {
       fieldset.disabled = false;
     });
     configureFeatures(config.features);
-    $$('form:not(#upload-form)').forEach((form) => {
+    $$('form[data-settings]').forEach((form) => {
       form.dataset.baseline = formData(form).toString();
       dirtyStatus(form);
     });
@@ -376,6 +405,7 @@ async function loadConfig() {
     // Read once even when the initial route is a form, then use view-aware polling.
     await pollStatus();
   } catch (error) {
+    if (!loggedIn) return;
     $('#load-error-text').textContent = '无法读取设备设置：' + error.message;
     $('#load-error').hidden = false;
     setOnline(false);
@@ -412,7 +442,7 @@ function markRestarting() {
 
 function lockControls() {
   const controls = $$(
-    'form > fieldset, .danger-section button, #initialize-storage, #recover-relay, #recover-energy'
+    '#main form > fieldset, .danger-section button, #initialize-storage, #recover-relay, #recover-energy, #logout'
   );
   const previous = controls.map((control) => control.disabled);
   controls.forEach((control) => {
@@ -424,7 +454,7 @@ function lockControls() {
     });
 }
 
-$$('form:not(#upload-form)').forEach((form) => {
+$$('form[data-settings]').forEach((form) => {
   form.addEventListener('input', () => dirtyStatus(form));
   form.addEventListener('change', () => dirtyStatus(form));
   form.addEventListener('submit', async (event) => {
@@ -442,11 +472,13 @@ $$('form:not(#upload-form)').forEach((form) => {
     }
     const data = formData(form);
     const submitted = data.toString();
+    const currentRevision = revision;
     form.dataset.busy = '1';
     const button = $('button[type="submit"]', form);
     button.disabled = true;
     try {
       const result = await request(form.getAttribute('action'), data);
+      if (!loggedIn || revision !== currentRevision) return;
       revision++;
       if (result.data) renderStatus(result.data);
       form.dataset.baseline = submitted;
@@ -643,6 +675,7 @@ $('#upload-form').addEventListener('submit', async (event) => {
   $('#upload-status').textContent = '正在上传固件…';
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/update');
+  xhr.setRequestHeader('X-DC1-Request', '1');
   xhr.responseType = 'json';
   xhr.timeout = 180000;
   xhr.upload.onprogress = (event) => {
@@ -670,6 +703,7 @@ $('#upload-form').addEventListener('submit', async (event) => {
     unlock();
   };
   xhr.onload = () => {
+    if (xhr.status === 401) showLogin(false, '登录已失效，请重新登录。');
     const result = xhr.response;
     if (xhr.status >= 200 && xhr.status < 300 && result && Number(result.code) === 1)
       finish(null, result);
@@ -681,4 +715,156 @@ $('#upload-form').addEventListener('submit', async (event) => {
   xhr.send(payload);
 });
 
-loadConfig();
+function showLogin(setup = false, message = '') {
+  loggedIn = false;
+  setupRequired = setup;
+  config = null;
+  revision++;
+  clearTimeout(timer);
+  haveRelayState = false;
+  setOnline(false);
+  setDrawer(false, false);
+  if ($('#confirm-dialog').open) $('#confirm-dialog').close('cancel');
+  document.body.classList.add('auth-screen');
+  $('#login-screen').hidden = false;
+  document.title = '登录 · DC1 智能插排';
+  // Discard private data and unsaved fields when a session ends.
+  $$('#main form').forEach((form) => {
+    form.reset();
+    delete form.dataset.baseline;
+  });
+  $$('#main form > fieldset').forEach((fieldset) => {
+    fieldset.disabled = true;
+  });
+  $$('[data-value]').forEach((element) => {
+    element.textContent = '--';
+  });
+  $('#log-output').textContent = '';
+  $('#uptime').textContent = '--';
+  logIndex = 0;
+  lastUpdate = '';
+  $('#updated-at').textContent = '';
+  $('#toast').hidden = true;
+  $('#password-status').textContent = '';
+  $('#login-form').reset();
+  $('#login-password').type = 'password';
+  $('#login-password').minLength = setup ? 8 : 0;
+  $('#login-password').autocomplete = setup ? 'new-password' : 'current-password';
+  $('#login-description').textContent = setup
+    ? '首次使用，请设置管理密码'
+    : '输入管理密码，登录设备';
+  $('#login-hint').hidden = !setup;
+  $('#login-submit').textContent = setup ? '设置密码并登录 →' : '登录 →';
+  $('#login-status').textContent = '';
+  $('#login-error').textContent = message;
+  $('#login-error').hidden = !message;
+  $('#login-retry').hidden = true;
+  $('#login-form fieldset').disabled = false;
+  const toggle = $('[data-password-toggle="login-password"]');
+  toggle.setAttribute('aria-label', '显示密码');
+  toggle.setAttribute('aria-pressed', 'false');
+  $('use', toggle).setAttribute('href', '#i-eye');
+  $('#login-password').focus({ preventScroll: true });
+}
+
+async function enterApp() {
+  loggedIn = true;
+  $('#login-form').reset();
+  $('#login-screen').hidden = true;
+  document.body.classList.remove('auth-screen');
+  await loadConfig();
+  if (loggedIn) $('#page-title').focus({ preventScroll: true });
+}
+
+async function checkLogin() {
+  $('#login-retry').hidden = true;
+  $('#login-form fieldset').disabled = true;
+  $('#login-status').textContent = '正在连接设备…';
+  try {
+    const { data } = await request('/auth');
+    if (!data || !Object.hasOwn(data, 'authenticated')) throw Error('设备返回了无效响应。');
+    if (data.authenticated) await enterApp();
+    else showLogin(Boolean(data.setup_required));
+  } catch (error) {
+    $('#login-status').textContent = error.message;
+    $('#login-retry').hidden = false;
+  }
+}
+$('#login-retry').addEventListener('click', checkLogin);
+
+$$('[data-password-toggle]').forEach((button) =>
+  button.addEventListener('click', () => {
+    const input = $('#' + button.dataset.passwordToggle);
+    const visible = input.type === 'password';
+    input.type = visible ? 'text' : 'password';
+    button.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
+    button.setAttribute('aria-pressed', String(visible));
+    $('use', button).setAttribute('href', visible ? '#i-eye-off' : '#i-eye');
+  })
+);
+
+$('#login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (authBusy) return;
+  const form = event.currentTarget;
+  const data = formData(form);
+  authBusy = true;
+  $('fieldset', form).disabled = true;
+  $('#login-error').hidden = true;
+  $('#login-status').textContent = setupRequired ? '正在设置密码…' : '正在登录…';
+  try {
+    await request('/login', data);
+    await enterApp();
+  } catch (error) {
+    $('#login-error').textContent = error.message;
+    $('#login-error').hidden = false;
+    $('#login-password').select();
+  } finally {
+    authBusy = false;
+    $('fieldset', form).disabled = false;
+    $('#login-status').textContent = '';
+  }
+});
+
+$('#logout').addEventListener('click', async () => {
+  if (!loggedIn || maintenanceBusy || restarting || authBusy) return;
+  authBusy = true;
+  $('#logout').disabled = true;
+  try {
+    await request('/logout');
+    showLogin();
+  } catch (error) {
+    if (loggedIn) toast(error.message, true);
+  } finally {
+    authBusy = false;
+    $('#logout').disabled = false;
+  }
+});
+
+$('#password-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!loggedIn || maintenanceBusy || restarting || authBusy) return;
+  const form = event.currentTarget;
+  if (form.elements.new_password.value !== form.elements.confirm_password.value) {
+    $('#password-status').textContent = '两次输入的新密码不一致。';
+    form.elements.confirm_password.focus();
+    return;
+  }
+  const data = formData(form);
+  authBusy = true;
+  $('fieldset', form).disabled = true;
+  $('#password-status').textContent = '正在保存…';
+  try {
+    const result = await request('/password', data);
+    form.reset();
+    $('#password-status').textContent = result.msg;
+  } catch (error) {
+    $('#password-status').textContent = error.message;
+  } finally {
+    authBusy = false;
+    $('fieldset', form).disabled = !loggedIn;
+  }
+});
+
+// A restored session can open the dashboard; otherwise only the login shell runs.
+checkLogin();
