@@ -13,7 +13,7 @@
 
 1. 首次安装参考[拆机接线与烧录指南](docs/flashing.md)。固件从 [Releases](https://github.com/pexcn/phicomm-dc1-firmware/releases) 下载。
 2. 无网络配置时，设备自动开启配网热点；连接后访问 `http://192.168.4.1`，首次设置管理密码后配置 Wi-Fi。总开关键长按 2～不足 10 秒后松手可重新配网。
-3. 联网后访问设备 IP，输入管理密码登录，无需用户名。在“网络与连接”配置 MQTT，按需开启 Home Assistant 自动发现。
+3. 联网后访问设备 IP，输入管理密码登录，无需用户名。在“网络连接”配置 MQTT，按需开启 Home Assistant 自动发现。
 4. 后续升级在“系统维护 → 固件升级”上传本项目新版 Release 的 `.bin` 固件。设备校验项目、硬件标识及 MD5，拒绝旧版无标识固件；这不是签名认证。
 
 仅支持加盐 SHA-256 管理密码；旧格式需先在[过渡版本](https://github.com/pexcn/phicomm-dc1-firmware/tree/47f5b35)登录完成迁移。可在“系统维护”修改管理密码，侧栏底部退出登录。重启或连续 8 小时未访问后需重新登录；登录会话只存 RAM。当前使用局域网 HTTP，不提供传输加密。
