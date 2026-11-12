@@ -6,6 +6,7 @@
 #include <cstdarg>
 #include <cstring>
 #define PSTR(text) text
+#define F(text) text
 #define snprintf_P snprintf
 #define vsnprintf_P vsnprintf
 #define memcpy_P memcpy

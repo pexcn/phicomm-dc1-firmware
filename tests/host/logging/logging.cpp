@@ -11,7 +11,14 @@ SerialSink Serial, Serial1;
 LogClock Rtc::rtcTime;
 
 struct Response {
+    struct Argument {
+        uint8_t index;
+        int toInt() const { return index; }
+    };
     std::string data;
+    uint8_t requestedIndex = 0;
+    Argument arg(const char *) const { return {requestedIndex}; }
+    void sendContent_P(const char *bytes) { data += bytes; }
     void sendContent(const char *bytes, size_t size) { data.append(bytes, size); }
 };
 static std::string escapeLog(char *tmp, uint16_t len)
@@ -22,8 +29,42 @@ static std::string escapeLog(char *tmp, uint16_t len)
     return response.data;
 }
 
+static std::string logBatch(uint8_t requestedIndex)
+{
+    Response response;
+    response.requestedIndex = requestedIndex;
+    Response *server = &response;
+#include "log-batch.inc"
+    const std::string prefix = ",\"logindex\":" + std::to_string(Debug::webLogIndex) + ",\"log\":\"";
+    assert(response.data.compare(0, prefix.size(), prefix) == 0);
+    assert(response.data.back() == '"');
+    return response.data.substr(prefix.size(), response.data.size() - prefix.size() - 1);
+}
+
 int main()
 {
+    // An HTTP batch has separators only between records, including incremental reads.
+    globalConfig.debug.type = 4;
+    Rtc::rtcTime.valid = true;
+    assert(logBatch(0).empty() && logBatch(Debug::webLogIndex).empty());
+    Debug::AddInfo(PSTR("RELAY Outlet 3=ON"));
+    const std::string on = " 00:00:00 [I] RELAY Outlet 3=ON";
+    assert(logBatch(0) == on);
+    uint8_t next = Debug::webLogIndex;
+    assert(logBatch(next).empty());
+    Debug::AddInfo(PSTR("RELAY Outlet 3=OFF"));
+    const std::string off = " 00:00:00 [I] RELAY Outlet 3=OFF";
+    assert(logBatch(next) == off);
+    assert(logBatch(0) == on + "\\n" + off);
+    // A stale cursor skips evicted IDs without adding an empty first line.
+    Debug::webLog[0] = 0; Debug::webLogIndex = 255;
+    Debug::AddInfo(PSTR("RELAY Outlet 3=ON"));
+    Debug::AddInfo(PSTR("RELAY Outlet 3=OFF"));
+    assert(Debug::webLogIndex == 2);
+    assert(logBatch(254) == on + "\\n" + off);
+    assert(logBatch(1) == off && logBatch(2).empty());
+    Debug::webLog[0] = 0; Debug::webLogIndex = 1;
+
     globalConfig.debug.type = 13;
     Rtc::rtcTime.hour = 17; Rtc::rtcTime.minute = 54; Rtc::rtcTime.second = 22;
     Rtc::rtcTime.valid = true;
@@ -87,5 +128,5 @@ int main()
     Debug::AddInfo(PSTR("SYS   Recovered"));
     Debug::GetLog(1, &entry, &len);
     assert(std::string(entry, len - 1) == " 17:54:22 [I] SYS   Recovered");
-    puts("PASS: actual logger: levels, clock/uptime, output routing, 4KB eviction, index wrap and long JSON lines");
+    puts("PASS: actual logger: HTTP batch separators, levels, clock/uptime, output routing, 4KB eviction, index wrap and long JSON lines");
 }

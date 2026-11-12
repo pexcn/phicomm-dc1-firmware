@@ -41,6 +41,10 @@ with tempfile.TemporaryDirectory(prefix='dc1-log-tests-') as build:
     start = source.index('                    size_t j = 0;', source.index('void Http::handleGetStatus()'))
     end = source.index('                    cflg = true;', start)
     (Path(build) / 'log-json.inc').write_text(source[start:end])
+    start = source.index('        bool cflg = ', source.index('void Http::handleGetStatus()'))
+    closing = r'        server->sendContent_P(PSTR("\""));'
+    end = source.index(closing, start) + len(closing)
+    (Path(build) / 'log-batch.inc').write_text(source[start:end])
     binary = str(Path(build) / 'logging')
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                     '-Itests/host/logging', '-Ilib/esp_framework/include', '-I' + build,

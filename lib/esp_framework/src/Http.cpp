@@ -620,7 +620,7 @@ void Http::handleGetStatus()
 #ifdef WEB_LOG_SIZE
     if (server->hasArg(F("i")))
     {
-        bool cflg = true;
+        bool cflg = false; // Separate records within this response; the UI joins batches.
         uint8_t counter = server->arg(F("i")).toInt();
         snprintf_P(tmpData, sizeof(tmpData), PSTR(",\"logindex\":%d,\"log\":\""), Debug::webLogIndex);
         server->sendContent_P(tmpData);
@@ -629,7 +629,6 @@ void Http::handleGetStatus()
             if (!counter)
             {
                 counter = Debug::webLogIndex;
-                cflg = false;
             }
             do
             {
