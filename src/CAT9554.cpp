@@ -52,8 +52,9 @@ bool I2cWrite(uint8_t addr, uint8_t reg, uint32_t val, uint8_t size)
             Wire.write((val >> (8 * bytes)) & 0xFF); // write data
         }
         x--;
-    } while (Wire.endTransmission(true) != 0 && x != 0); // end transmission
-    return (x);
+        if (Wire.endTransmission(true) == 0) return true;
+    } while (x != 0);
+    return false;
 }
 
 CAT9554::CAT9554(uint8_t sda, uint8_t scl, uint16_t frequency)
@@ -96,19 +97,13 @@ bool CAT9554::writeGpio()
 
 bool CAT9554::configGpio()
 {
-    if (!this->writeByte(INPUT_REG, this->configMask))
+    // The chip resets its latch HIGH. Apply the known value (LOW at startup)
+    // before enabling outputs; leave directions unchanged if this write fails.
+    if (!this->writeGpio())
     {
         return false;
     }
-    if (!this->writeByte(CONFIG_REG, this->configMask))
-    {
-        return false;
-    }
-    if (!this->writeByte(INPUT_REG, 0x00))
-    {
-        return false;
-    }
-    return true;
+    return this->writeByte(CONFIG_REG, this->configMask);
 }
 
 bool CAT9554::readConfig()

@@ -68,6 +68,14 @@ with tempfile.TemporaryDirectory(prefix='dc1-button-tests-') as build:
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror', '-I' + build,
                     'tests/host/buttons.cpp', '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Model reset registers and I2C faults while running the actual GPIO expander.
+with tempfile.TemporaryDirectory(prefix='dc1-expander-tests-') as build:
+    binary = str(Path(build) / 'expander')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-Itests/host/expander', '-Iinclude',
+                    'tests/host/expander/expander.cpp', 'src/CAT9554.cpp',
+                    '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Feed physical 4800-baud 8E1 edges through the installed serial library and meter.
 with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
     binary = str(Path(build) / 'meter')

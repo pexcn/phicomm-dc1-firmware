@@ -30,16 +30,16 @@ protected:
     bool configGpio();
     bool readConfig();
 
-    /// Mask for the pin mode - 1 means output, 0 means input
-    uint16_t configMask;
+    /// Mask for the pin mode - 1 means input, 0 means output
+    uint16_t configMask = 0xff;
     /// The mask to write as output state - 1 means HIGH, 0 means LOW
-    uint16_t outputMask;
+    uint16_t outputMask = 0;
     /// The state read in read_gpio_ - 1 means HIGH, 0 means LOW
-    uint16_t inputMask;
+    uint16_t inputMask = 0xff;
     /// IRQ is enabled.
-    bool enableIrq;
+    bool enableIrq = false;
     /// IRQ pin.
-    uint8_t irqPin;
+    uint8_t irqPin = 0;
     static void gpioIntr();
 
 public:
