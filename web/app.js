@@ -3,11 +3,11 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const routes = {
-  overview: ['设备概览', '查看插座状态与整机用电情况。', '概览'],
-  settings: ['插座设置', '设置上电行为、指示灯与过载保护。', '插座设置'],
-  network: ['网络与连接', '管理 Wi-Fi、MQTT 与 Home Assistant 连接。', '网络与连接'],
-  logs: ['运行日志', '查看设备运行与连接事件。', '运行日志'],
-  system: ['系统维护', '查看设备信息、管理存储与升级固件。', '系统维护']
+  overview: ['设备概览', '查看插座状态与整机用电情况。'],
+  settings: ['插座设置', '设置上电行为、指示灯与过载保护。'],
+  network: ['网络与连接', '管理 Wi-Fi、MQTT 与 Home Assistant 连接。'],
+  logs: ['运行日志', '查看设备运行与连接事件。'],
+  system: ['系统维护', '查看设备信息、管理存储与升级固件。']
 };
 let config = null;
 let loggedIn = false;
@@ -121,7 +121,6 @@ function navigate(focus = false) {
   });
   $('#page-title').textContent = routes[route][0];
   $('#page-description').textContent = routes[route][1];
-  $('#route-label').textContent = routes[route][2];
   setDrawer(false, false);
   if (focus) {
     $('#page-title').focus({ preventScroll: true });
@@ -757,9 +756,6 @@ function showLogin(setup = false, message = '') {
   $('#login-password').type = 'password';
   $('#login-password').minLength = setup ? 8 : 0;
   $('#login-password').autocomplete = setup ? 'new-password' : 'current-password';
-  $('#login-description').textContent = setup
-    ? '首次使用，请设置管理密码'
-    : '输入管理密码，登录设备';
   $('#login-hint').hidden = !setup;
   $('#login-submit').textContent = setup ? '设置密码并登录 →' : '登录 →';
   $('#login-status').textContent = '';

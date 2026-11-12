@@ -111,7 +111,6 @@
             <svg class="icon"><use href="#i-plug" /></svg>
           </div>
           <h1 id="login-title">DC1 智能插排</h1>
-          <p id="login-description">输入管理密码，登录设备</p>
           <form id="login-form" method="post" action="/login">
             <fieldset disabled>
               <label class="field" for="login-password">管理密码</label>
@@ -146,7 +145,6 @@
           <button id="login-retry" class="text-link" type="button" hidden>重新连接</button>
           <noscript><p class="auth-error">请启用 JavaScript 后登录设备。</p></noscript>
         </div>
-        <p class="login-footer">本地连接 · 无需云服务</p>
       </div>
     </section>
     <button
@@ -195,8 +193,8 @@
           aria-controls="sidebar"
           aria-expanded="false"
         >
-          <svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" /></svg></button
-        ><span class="topbar-label">设备 / <span id="route-label">概览</span></span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+        </button>
       </div>
       <div class="topbar-right">
         <span class="device-ip">IP 地址：<span data-value="local_ip">--</span></span>
@@ -236,7 +234,6 @@
         <section class="card relay-card" data-module>
           <div class="section-heading">
             <h2>插座控制</h2>
-            <small>总开关控制整排供电</small>
           </div>
           <div class="master-row">
             <svg class="icon"><use href="#i-power" /></svg>
