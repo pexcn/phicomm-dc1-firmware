@@ -276,11 +276,6 @@ void Http::handleMqtt()
         server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"MQTT主题不能为空\"}"));
         return;
     }
-    if (topic.indexOf("%prefix%/") == 0)
-    {
-        server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"MQTT主题必须包含【%prefix%/】\"}"));
-        return;
-    }
     strcpy(globalConfig.mqtt.server, server->arg(F("mqtt_server")).c_str());
     globalConfig.mqtt.port = server->arg(F("mqtt_port")).toInt();
     globalConfig.mqtt.retain = server->arg(F("retain")) == F("1");

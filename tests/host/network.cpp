@@ -1,6 +1,7 @@
 #include <array>
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
@@ -15,6 +16,7 @@ public:
     bool equals(const char *value) const { return *this == value; }
     int indexOf(char value) const { auto pos = find(value); return pos == npos ? -1 : int(pos); }
     void remove(size_t pos) { if (pos < size()) erase(pos); }
+    long toInt() const { return strtol(c_str(), nullptr, 10); }
 };
 class IPAddress {
     std::array<uint8_t, 4> bytes = {};
@@ -51,8 +53,18 @@ static GlobalConfigMessage globalConfig;
 static Server endpoint;
 static bool authorized = true, saveOk = true;
 static unsigned saves;
+struct Mqtt {
+    struct Connection {
+        bool connected() const { return true; }
+        void disconnect() {}
+    };
+    static Connection mqttClient;
+    static bool mqttConnect() { return true; }
+};
+Mqtt::Connection Mqtt::mqttClient;
 struct Http {
     static Server *server;
+    static void handleMqtt();
     static void handledhcp();
     static bool captivePortal();
     static bool checkAuth()
@@ -102,6 +114,21 @@ static void submit()
 
 int main()
 {
+    for (const char *topic : {"%module%/%hostname%/%prefix%/", "%prefix%/%hostname%/",
+            "dc1/%prefix%", "devices/dc1"})
+    {
+        setup(); endpoint.args["mqtt_topic"] = topic;
+        Http::handleMqtt();
+        assert(saves == 1 && strcmp(globalConfig.mqtt.topic, topic) == 0);
+        assert(endpoint.response.find("\"code\":1") != std::string::npos);
+    }
+    for (const auto &topic : {std::string(), std::string(sizeof(globalConfig.mqtt.topic), 'x')})
+    {
+        setup(); endpoint.args["mqtt_topic"] = topic;
+        const auto before = globalConfig;
+        Http::handleMqtt();
+        assert(saves == 0 && memcmp(&globalConfig, &before, sizeof(before)) == 0);
+    }
     for (const char *valid : {"0.0.0.0", "255.255.255.255", "192.168.100.200", "001.002.003.004"})
         assert(Wifi::isIp(valid));
     for (const char *invalid : {"1.2.3", "1..2.3", "1.2.3.", "1.2.3.4x", "1.2.3.4:80",
