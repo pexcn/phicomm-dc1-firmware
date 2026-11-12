@@ -119,6 +119,12 @@ with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
     (Path(build) / 'mqtt-discovery.inc').write_text(source[start:source.index('// Http', start)])
     start = source.index('void DC1::httpHa(')
     (Path(build) / 'ha-yaml.inc').write_text(source[start:source.index('void DC1::logoLed()', start)])
+    source = (root / 'lib/esp_framework/src/Http.cpp').read_text()
+    start = source.index('bool argumentFits(')
+    handler = source[start:source.index('// Bound temporary allocations', start)]
+    start = source.index('void Http::handleDiscovery()')
+    handler += source[start:source.index('\n#endif', start)]
+    (Path(build) / 'discovery-handler.inc').write_text(handler)
     source = (root / 'lib/esp_framework/src/Mqtt.cpp').read_text()
     start = source.index('String Mqtt::getCmndTopic(')
     helpers = source[start:source.index('void Mqtt::mqttSetLoopCallback(', start)]

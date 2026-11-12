@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <utility>
 #include "GlobalConfig.pb.h"
 
 #define F(text) text
@@ -46,22 +47,45 @@ static char tmpData[512];
 #define CONTENT_LENGTH_UNKNOWN -1
 struct ESP8266WebServer {
     std::string content;
+    String prefix;
+    int status = 0;
+    String arg(const char *) { return prefix; }
     void setContentLength(int) {}
     void sendHeader(const char *, const char *) {}
-    void send_P(int, const char *, const char *) {}
+    void send_P(int code, const char *, const char *text) { status = code; content = text; }
     void sendContent(const String &text) { content += text; }
     void sendContent_P(const char *text) { content += text; }
 };
-struct Http { static bool checkAuth() { return true; } };
+static ESP8266WebServer endpoint;
+static bool saveOk = true;
+static unsigned saves;
+struct Http {
+    static ESP8266WebServer *server;
+    static bool checkAuth() { return true; }
+    static bool saveConfigOrError()
+    {
+        ++saves;
+        if (!saveOk) server->send_P(500, "application/json", "{\"code\":0}");
+        return saveOk;
+    }
+    static void handleDiscovery();
+};
+ESP8266WebServer *Http::server = &endpoint;
 struct Debug {
     static void AddError(const char *, ...) { ++errors; }
 };
 struct Module {
     String getModuleName() { return "dc1"; }
+    virtual void mqttDiscovery(bool) { assert(false); }
 };
 static Module device;
 static Module *module = &device;
 struct Mqtt {
+    struct Connection {
+        bool online = true;
+        bool connected() const { return online; }
+    };
+    static Connection mqttClient;
     static String getTopic(uint8_t prefix, String subtopic);
     static String getCmndTopic(String topic);
     static String getStatTopic(String topic);
@@ -73,7 +97,8 @@ struct Mqtt {
     }
     static void availability() { ++availabilityReports; }
 };
-class DC1 {
+Mqtt::Connection Mqtt::mqttClient;
+class DC1 : public Module {
 public:
     char powerStatTopic[100];
     char energyTeleTopic[100];
@@ -87,6 +112,7 @@ public:
 #include "mqtt-topic.inc"
 #include "mqtt-discovery.inc"
 #include "ha-yaml.inc"
+#include "discovery-handler.inc"
 
 static void resetSpies()
 {
@@ -139,6 +165,53 @@ static void testConfiguration(const char *uid, const char *prefix, const char *f
     puts("");
 }
 
+static void testPrefixChange()
+{
+    DC1 dc;
+    module = &dc;
+    strcpy(UID, "dc1_abcdef");
+    strcpy(globalConfig.mqtt.topic, "%module%/%hostname%/%prefix%/");
+    strcpy(dc.powerStatTopic, Mqtt::getStatTopic("power1").c_str());
+    strcpy(globalConfig.mqtt.discovery_prefix, "old-homeassistant");
+    globalConfig.mqtt.discovery = true;
+    resetSpies();
+    dc.mqttDiscovery(true);
+    const auto old = packets;
+    resetSpies();
+    endpoint.prefix = std::string(sizeof(globalConfig.mqtt.discovery_prefix) - 1, 'n');
+    const auto before = globalConfig;
+    saves = 0;
+    saveOk = false;
+    Http::handleDiscovery();
+    assert(saves == 1 && endpoint.status == 500 && packets.empty());
+    assert(memcmp(&before, &globalConfig, sizeof(before)) == 0);
+    saves = 0;
+    saveOk = true;
+    Mqtt::mqttClient.online = false;
+    Http::handleDiscovery();
+    assert(saves == 0 && packets.empty());
+    assert(memcmp(&before, &globalConfig, sizeof(before)) == 0);
+    Mqtt::mqttClient.online = true;
+    Http::handleDiscovery();
+    assert(saves == 1 && !globalConfig.mqtt.discovery && packets.size() == 14);
+    assert(strcmp(globalConfig.mqtt.discovery_prefix, endpoint.prefix.c_str()) == 0);
+    for (unsigned i = 0; i < packets.size(); ++i)
+        assert(packets[i].topic == old[i].topic && packets[i].message.empty() && packets[i].retained);
+    resetSpies();
+    Http::handleDiscovery();
+    assert(saves == 2 && globalConfig.mqtt.discovery && packets.size() == 14);
+    const auto enabled = packets;
+    for (const auto &packet : enabled)
+        assert(packet.topic.find(endpoint.prefix + "/") == 0 && !packet.message.empty() && packet.retained);
+    resetSpies();
+    Http::handleDiscovery();
+    assert(saves == 3 && !globalConfig.mqtt.discovery && packets.size() == 14);
+    for (unsigned i = 0; i < packets.size(); ++i)
+        assert(packets[i].topic == enabled[i].topic && packets[i].message.empty() && packets[i].retained);
+    module = &device;
+    puts("PASS: actual Discovery HTTP handler clears all old retained topics, then enables/disables the new prefix; failed saves/offline deletion preserve configuration");
+}
+
 int main()
 {
     testConfiguration("dc1_abcdef", "homeassistant", "%module%/%hostname%/%prefix%/");
@@ -147,5 +220,6 @@ int main()
     const std::string expanded = "%hostname%%hostname%%hostname%%hostname%123456789";
     assert(expanded.size() == 49);
     testConfiguration(uid.c_str(), prefix.c_str(), expanded.c_str());
+    testPrefixChange();
     puts("PASS: actual MQTT Discovery default/max topics, JSON, packet bounds and retained removal");
 }

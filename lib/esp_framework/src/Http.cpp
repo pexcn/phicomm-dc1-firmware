@@ -1,5 +1,6 @@
 #include <ESP8266WebServer.h>
 #include <ctype.h>
+#include <utility>
 #include "FirmwareUpload.h"
 #include <WiFiUdp.h>
 #include "Http.h"
@@ -308,13 +309,30 @@ void Http::handleDiscovery()
         return;
     }
     if (!argumentFits("discovery_prefix", sizeof(globalConfig.mqtt.discovery_prefix))) return;
+    const bool enable = !globalConfig.mqtt.discovery;
+    if (!enable && module && !Mqtt::mqttClient.connected())
+    {
+        server->send_P(200, PSTR("application/json"),
+            PSTR("{\"code\":0,\"msg\":\"请先连接MQTT，以便清理原有的自动发现消息。\"}"));
+        return;
+    }
+    char oldPrefix[sizeof(globalConfig.mqtt.discovery_prefix)];
+    memcpy(oldPrefix, globalConfig.mqtt.discovery_prefix, sizeof(oldPrefix));
     strcpy(globalConfig.mqtt.discovery_prefix, server->arg(F("discovery_prefix")).c_str());
-    globalConfig.mqtt.discovery = !globalConfig.mqtt.discovery;
-    if (!saveConfigOrError()) return;
+    globalConfig.mqtt.discovery = enable;
+    if (!saveConfigOrError())
+    {
+        memcpy(globalConfig.mqtt.discovery_prefix, oldPrefix, sizeof(oldPrefix));
+        globalConfig.mqtt.discovery = !enable;
+        return;
+    }
 
     if (module)
     {
-        module->mqttDiscovery(globalConfig.mqtt.discovery);
+        // Disabling must remove retained entries from the previous namespace.
+        if (!enable) std::swap(globalConfig.mqtt.discovery_prefix, oldPrefix);
+        module->mqttDiscovery(enable);
+        if (!enable) std::swap(globalConfig.mqtt.discovery_prefix, oldPrefix);
     }
     if (globalConfig.mqtt.discovery)
     {
