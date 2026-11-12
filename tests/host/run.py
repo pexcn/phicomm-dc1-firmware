@@ -7,6 +7,7 @@ import tempfile
 import hashlib
 import re
 import struct
+import gzip
 
 root = Path(__file__).resolve().parents[2]
 nanopb = root / '.pio/libdeps/dc1/Nanopb'
@@ -17,6 +18,9 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
     core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
     littlefs = core / 'packages/framework-arduinoespressif8266/libraries/LittleFS/lib/littlefs'
     objects = []
+    # Compile the SDK's actual CRC implementation with the host flash stubs.
+    sdk_crc = Path(build) / 'core-crc32.cpp'
+    sdk_crc.write_text((core / 'packages/framework-arduinoespressif8266/cores/esp8266/crc32.cpp').read_text())
     for name in ['lfs', 'lfs_util']:
         obj = str(Path(build) / (name + '.o'))
         subprocess.run(['gcc', '-std=c99', '-DLFS_NAME_MAX=32', '-DLFS_NO_DEBUG',
@@ -25,14 +29,15 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
         objects.append(obj)
     command = ['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                '-no-pie', '-Wl,--defsym,_EEPROM_start=0x402fb000',
+               '-Wl,--defsym,_CONFIG_BACKUP_start=0x40274000',
                '-Wl,--defsym,_RELAY_STATE_start=0x402fa000',
-               '-Itests/host/stubs', '-Ilib/esp_framework/include', '-Iinclude',
+               '-Itests/host/stubs', '-Itests/host/auth', '-Ilib/esp_framework/include', '-Iinclude',
                '-I' + str(nanopb), '-I' + str(littlefs), '-DLFS_NAME_MAX=32',
                'tests/host/persistence.cpp', 'tests/host/littlefs_adapter.cpp',
                'lib/esp_framework/src/Config.cpp', 'lib/esp_framework/src/GlobalConfig.pb.c',
                'src/RuntimeStorage.cpp', 'src/DC1Config.pb.c',
                str(nanopb / 'pb_common.c'), str(nanopb / 'pb_encode.c'),
-               str(nanopb / 'pb_decode.c'), *objects, '-o', binary]
+               str(nanopb / 'pb_decode.c'), str(sdk_crc), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
 # Exercise the logger and HTTP escaping with the original fixed buffer sizes.
@@ -108,11 +113,16 @@ assert identity.rstrip(b'\0') == expected_id and size == len(image) - 68
 assert hashlib.md5(image[:size]).hexdigest().encode() == digest
 assert (root / 'output/dc1.bin').read_bytes() == image
 with tempfile.TemporaryDirectory(prefix='dc1-ota-tests-') as build:
+    compressed = gzip.compress(image[:size], mtime=0)
+    compressed += struct.pack('<32sI32s', identity, len(compressed),
+        hashlib.md5(compressed).hexdigest().encode())
+    compressed_path = Path(build) / 'compressed.bin'
+    compressed_path.write_bytes(compressed)
     binary = str(Path(build) / 'firmware')
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                     '-Itests/host/ota', '-Ilib/esp_framework/include',
                     'tests/host/ota/firmware.cpp', '-o', binary], cwd=root, check=True)
-    subprocess.run([binary, str(firmware)], check=True)
+    subprocess.run([binary, str(firmware), str(compressed_path)], check=True)
 print('PASS: firmware identity, checksum, chunk boundaries, corruption and aborted uploads')
 # Check the linked image, not just the declarations in the linker script.
 elf = root / '.pio/build/dc1/firmware.elf'
@@ -125,9 +135,14 @@ for line in subprocess.check_output([str(nm), '-n', str(elf)], text=True).splitl
 assert symbols['_FS_start'] == 0x402ea000
 assert symbols['_FS_end'] == symbols['_RELAY_STATE_start'] == 0x402fa000
 assert symbols['_EEPROM_start'] == 0x402fb000
-assert symbols['_irom0_text_end'] <= symbols['_FS_start']
+assert symbols['_CONFIG_BACKUP_start'] == 0x40274000
+assert symbols['_irom0_text_end'] <= symbols['_CONFIG_BACKUP_start']
 image_size = (root / '.pio/build/dc1/firmware.bin').stat().st_size
 rounded_size = (image_size + 4095) & ~4095
 update_start = symbols['_FS_start'] - 0x40200000 - rounded_size
-assert rounded_size <= update_start
+limit = int(re.search(r'^#define FIRMWARE_MAX_SIZE (0x[0-9a-fA-F]+)U', header, re.MULTILINE).group(1), 16)
+assert image_size <= limit == symbols['_CONFIG_BACKUP_start'] - 0x40200000
+assert rounded_size <= limit
+assert symbols['_FS_start'] - 0x40200000 - limit >= limit + 4096
+assert limit <= update_start
 print('PASS: runtime/configuration layout and space for same-size OTA image')

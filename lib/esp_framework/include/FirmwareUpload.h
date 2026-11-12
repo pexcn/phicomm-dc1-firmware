@@ -6,6 +6,9 @@
 
 // Shared with scripts/name-firmware.py; change for incompatible hardware/layouts.
 #define FIRMWARE_ID "phicomm-dc1-firmware:esp01_1m:1"
+// Config slot B occupies 0x74000..0x74fff. Bound both the running image and
+// the core's top-down OTA staging allocation so neither can touch this slot.
+#define FIRMWARE_MAX_SIZE 0x74000U
 
 class FirmwareUpload
 {
@@ -16,6 +19,9 @@ class FirmwareUpload
 
     bool writeImage(uint8_t *data, size_t size)
     {
+        // Published images are raw ESP8266 binaries. A compressed image could
+        // expand over the reserved config sector even when its upload fits.
+        if (written == 0 && data[0] != 0xe9) return false;
         // Leave one byte unused so end() without 'true' can only cancel.
         if (written + size >= Update.size()) return false;
         if (Update.write(data, size) != size) return false;
@@ -24,15 +30,21 @@ class FirmwareUpload
     }
 
 public:
+    static size_t capacity(size_t available)
+    {
+        return available < FIRMWARE_MAX_SIZE ? available : FIRMWARE_MAX_SIZE;
+    }
+
     bool begin(size_t capacity)
     {
         cancel();
         used = written = 0;
-        return Update.begin(capacity, U_FLASH);
+        return Update.begin(FirmwareUpload::capacity(capacity), U_FLASH);
     }
 
     bool write(uint8_t *data, size_t size)
     {
+        if (written + used + size > FIRMWARE_MAX_SIZE) return false;
         if (used + size <= TRAILER_SIZE)
         {
             memcpy(tail + used, data, size);

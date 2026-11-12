@@ -24,7 +24,7 @@ static bool upload(std::vector<uint8_t> image, size_t chunk, size_t capacity)
 
 int main(int argc, char **argv)
 {
-    assert(argc == 2);
+    assert(argc == 3);
     std::ifstream file(argv[1], std::ios::binary);
     std::vector<uint8_t> image((std::istreambuf_iterator<char>(file)), {});
     assert(image.size() > 68);
@@ -59,4 +59,25 @@ int main(int argc, char **argv)
     firmware.cancel();
     assert(!Update.running && !Update.activated);
     assert(upload(image, 1436, image.size())); // Retry after failure.
+    // Even a generous caller must not place top-down OTA staging over config B.
+    for (size_t available : {size_t(FIRMWARE_MAX_SIZE), size_t(0xea000), size_t(1024 * 1024)})
+    {
+        assert(upload(image, 1436, available));
+        assert(Update.capacity == FIRMWARE_MAX_SIZE);
+        assert(0xea000 - Update.capacity >= 0x74000 + 4096);
+    }
+    std::vector<uint8_t> oversized(FIRMWARE_MAX_SIZE + 68, 0xe9);
+    assert(!upload(oversized, 1436, 1024 * 1024) && !Update.activated);
+    assert(firmware.begin(1024 * 1024));
+    oversized.resize(FIRMWARE_MAX_SIZE + 1);
+    assert(!firmware.write(oversized.data(), oversized.size()));
+    firmware.cancel();
+    // Reject even correctly checksummed compressed uploads, whose expanded
+    // size cannot be bounded by the raw-image partition limit.
+    std::ifstream gzipFile(argv[2], std::ios::binary);
+    std::vector<uint8_t> compressed((std::istreambuf_iterator<char>(gzipFile)), {});
+    assert(compressed.size() > 68 && compressed[0] == 0x1f && compressed[1] == 0x8b);
+    Update.expected.assign(compressed.begin(), compressed.end() - 68);
+    Update.checksum.assign(compressed.end() - 32, compressed.end());
+    assert(!upload(compressed, 1436, 1024 * 1024) && !Update.activated);
 }

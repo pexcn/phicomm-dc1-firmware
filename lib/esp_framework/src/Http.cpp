@@ -232,7 +232,7 @@ void Http::handleConfig()
         PSTR("\"flash_size\":%u,\"flash_config_size\":%u,\"sketch_size\":%u,\"ota_space\":%u,"
              "\"chip_id\":%u,\"flash_id\":%u,\"portal\":%d},\"fields\":{"),
         ESP.getFlashChipRealSize() / 1024, ESP.getFlashChipSize() / 1024,
-        ESP.getSketchSize() / 1024, ((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000) / 1024,
+        ESP.getSketchSize() / 1024, FirmwareUpload::capacity((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000) / 1024,
         ESP.getChipId(), ESP.getFlashChipId(), server->client().localIP() == WiFi.softAPIP());
     server->sendContent_P(tmpData);
     sendJsonField("uid", UID);

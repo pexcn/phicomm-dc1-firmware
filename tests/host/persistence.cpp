@@ -7,36 +7,66 @@
 #include "RuntimeStorage.h"
 #include "LittleFS.h"
 #include "DC1Config.pb.h"
+#include "coredecls.h"
 
 static std::array<uint8_t, 1024 * 1024> flash;
 static std::array<unsigned, 256> erases = {};
 static unsigned long now;
 static bool failErase, failWrite, corruptWrite;
 static const unsigned CONFIG = 0xfb000;
+static const unsigned BACKUP = 0x74000;
+static int cutAfter = -1;
+static unsigned mutations = 0;
+static bool powerOff = false, failRead = false;
+static unsigned configErases() { return erases[CONFIG / 4096] + erases[BACKUP / 4096]; }
+static bool mutation()
+{
+    ++mutations;
+    if (cutAfter >= 0 && mutations > unsigned(cutAfter)) { powerOff = true; return false; }
+    return true;
+}
+static void assertConfigIsolation(const std::array<uint8_t, 1024 * 1024> &before)
+{
+    for (unsigned address = 0; address < flash.size(); address += 4096)
+        if (address != CONFIG && address != BACKUP)
+            assert(memcmp(flash.data() + address, before.data() + address, 4096) == 0);
+}
 unsigned long millis() { return now; }
 
 int spi_flash_read(uint32 address, uint32 *data, uint32 size)
 {
     assert(address % 4 == 0 && size % 4 == 0 && uintptr_t(data) % 4 == 0);
     assert(address + size <= flash.size());
+    if (powerOff || failRead) { failRead = false; return 1; }
     memcpy(data, flash.data() + address, size);
     return 0;
 }
 int spi_flash_erase_sector(uint16 sector)
 {
-    assert(sector == CONFIG / 4096);
+    assert(sector == CONFIG / 4096 || sector == BACKUP / 4096);
+    if (powerOff) return 1;
     if (failErase) { failErase = false; return 1; }
     ++erases[sector];
-    memset(flash.data() + sector * 4096, 0xff, 4096);
+    for (unsigned offset = 0; offset < 4096; offset += 4)
+    {
+        memset(flash.data() + sector * 4096 + offset, 0xff, 4);
+        if (!mutation()) return 1;
+    }
     return 0;
 }
 int spi_flash_write(uint32 address, uint32 *data, uint32 size)
 {
     assert(address % 4 == 0 && size % 4 == 0 && uintptr_t(data) % 4 == 0);
-    assert(address == CONFIG && size == 4096);
+    unsigned base = address & ~4095U;
+    assert((base == CONFIG || base == BACKUP) && address + size <= base + 4096);
+    if (powerOff) return 1;
     const uint8_t *source = reinterpret_cast<uint8_t *>(data);
-    uint32 limit = failWrite ? 8 : size;
-    for (uint32 i = 0; i < limit; ++i) flash[address + i] &= source[i];
+    uint32 limit = failWrite && size > 8 ? 8 : size;
+    for (uint32 offset = 0; offset < limit; offset += 4)
+    {
+        for (uint32 i = 0; i < 4; ++i) flash[address + offset + i] &= source[offset + i];
+        if (!mutation()) return 1;
+    }
     if (failWrite) { failWrite = false; return 1; }
     if (corruptWrite) { corruptWrite = false; flash[address] ^= 1; }
     return 0;
@@ -46,16 +76,16 @@ static void testConfiguration()
 {
     flash.fill(0xff);
     for (now = 0; now <= 86400000; now += 1000) Config::loop();
-    assert(erases[CONFIG / 4096] == 0); // Idle for a day: no writes at all.
+    assert(configErases() == 0); // Idle for a day: no writes at all.
     Config::resetConfig();
     strcpy(globalConfig.wifi.ssid, "example");
     assert(Config::saveConfig());
-    assert(erases[CONFIG / 4096] == 1);
+    assert(configErases() == 1);
     assert(Config::saveConfig());
-    assert(erases[CONFIG / 4096] == 1); // Identical settings submissions.
+    assert(configErases() == 1); // Identical settings submissions.
     globalConfig.mqtt.port = 1883;
     assert(Config::saveConfig());
-    assert(erases[CONFIG / 4096] == 2);
+    assert(configErases() == 2);
     memset(&globalConfig, 0, sizeof(globalConfig));
     Config::readConfig();
     assert(strcmp(globalConfig.wifi.ssid, "example") == 0 && globalConfig.mqtt.port == 1883);
@@ -68,13 +98,13 @@ static void testConfiguration()
         failWrite = kind == 1;
         corruptWrite = kind == 2;
         assert(!Config::saveConfig());
-        unsigned attempts = erases[CONFIG / 4096];
+        unsigned attempts = configErases();
         now += 59999;
         Config::loop();
-        assert(erases[CONFIG / 4096] == attempts);
+        assert(configErases() == attempts);
         ++now;
         Config::loop();
-        assert(erases[CONFIG / 4096] == attempts + 1);
+        assert(configErases() == attempts + 1);
         uint16_t expected = globalConfig.mqtt.port;
         Config::readConfig();
         assert(globalConfig.mqtt.port == expected);
@@ -87,12 +117,12 @@ static void testRestartPreparation()
     module = &current;
     current.failFlush = true;
     ++globalConfig.mqtt.port;
-    unsigned before = erases[CONFIG / 4096];
+    unsigned before = configErases();
     assert(!Config::prepareRestart());
-    assert(current.flushes == 1 && erases[CONFIG / 4096] == before);
+    assert(current.flushes == 1 && configErases() == before);
     current.failFlush = false;
     assert(Config::prepareRestart());
-    assert(current.flushes == 2 && erases[CONFIG / 4096] == before + 1);
+    assert(current.flushes == 2 && configErases() == before + 1);
     // Password setup can preserve the old embedded payload while migration is blocked.
     current.failSave = true;
     assert(!Config::saveConfig());
@@ -143,12 +173,10 @@ static void testPasswordRecovery()
     Config::readConfig();
     assert(memcmp(&globalConfig, &original, sizeof(original)) == 0);
     assert(current.saves == 0 && current.flushes == 0);
-    assert(memcmp(flash.data(), previousFlash.data(), CONFIG) == 0);
-    assert(memcmp(flash.data() + CONFIG + 4096, previousFlash.data() + CONFIG + 4096,
-        flash.size() - CONFIG - 4096) == 0);
-    unsigned before = erases[CONFIG / 4096];
+    assertConfigIsolation(previousFlash);
+    unsigned before = configErases();
     assert(Config::resetWebPassword());
-    assert(erases[CONFIG / 4096] == before);
+    assert(configErases() == before);
     module = nullptr;
     assert(Config::saveConfig());
     puts("PASS: password recovery persists only the cleared password, rolls back on failure and preserves other flash");
@@ -156,6 +184,7 @@ static void testPasswordRecovery()
 
 static void testRetiredConfigFields()
 {
+    flash.fill(0xff);
     // A valid older configuration can exceed the new schema's encoded maximum.
     Config::resetConfig();
     auto fill = [](char *value, size_t size) { memset(value, 'x', size - 1); };
@@ -217,7 +246,147 @@ static void testRetiredConfigFields()
     assert(strcmp(globalConfig.http.pass, http.pass) == 0);
     assert(globalConfig.debug.type == debug.type);
     assert(Config::saveConfig());
-    assert((unsigned(flash[CONFIG + 2]) << 8 | flash[CONFIG + 3]) <= GlobalConfigMessage_size);
+    assert((unsigned(flash[BACKUP + 2]) << 8 | flash[BACKUP + 3]) <= GlobalConfigMessage_size);
+}
+
+static void storeLegacyConfig()
+{
+    uint8_t payload[GlobalConfigMessage_size];
+    auto stream = pb_ostream_from_buffer(payload, sizeof(payload));
+    assert(pb_encode(&stream, GlobalConfigMessage_fields, &globalConfig));
+    uint16_t len = stream.bytes_written, crc = Config::crc16(payload, len);
+    uint8_t header[] = {0, GLOBAL_CFG_VERSION, uint8_t(len >> 8), uint8_t(len),
+        uint8_t(crc >> 8), uint8_t(crc)};
+    memcpy(flash.data() + CONFIG, header, sizeof(header));
+    memcpy(flash.data() + CONFIG + 6, payload, len);
+}
+
+static void checkConfigurationCuts(const char *name, const GlobalConfigMessage &updated)
+{
+    const auto baseline = flash;
+    Config::readConfig();
+    const auto previous = globalConfig;
+    globalConfig = updated;
+    mutations = 0;
+    assert(Config::saveConfig());
+    const unsigned steps = mutations;
+    assert(steps > 1024);
+    for (unsigned cut = 0; cut < steps; ++cut)
+    {
+        flash = baseline;
+        globalConfig = updated;
+        mutations = 0;
+        cutAfter = cut;
+        assert(!Config::saveConfig(false));
+        assert(powerOff);
+        powerOff = false;
+        cutAfter = -1;
+        memset(&globalConfig, 0, sizeof(globalConfig));
+        Config::readConfig();
+        // Each erased/programmed word may be the last one before losing power.
+        assert(memcmp(&globalConfig, &previous, sizeof(globalConfig)) == 0
+            || memcmp(&globalConfig, &updated, sizeof(globalConfig)) == 0);
+        assertConfigIsolation(baseline);
+    }
+    flash = baseline;
+    globalConfig = updated;
+    assert(Config::saveConfig());
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &updated, sizeof(globalConfig)) == 0);
+    printf("PASS: %u configuration power-cut points (%s), preserving Wi-Fi, MQTT, password and embedded runtime data\n", steps, name);
+}
+
+static void fixFooterCrc(unsigned address)
+{
+    auto data = flash.data() + address;
+    size_t len = (unsigned(data[2]) << 8) | data[3];
+    uint32_t crc = crc32(data + 4080, 8, crc32(data, len + 6));
+    memcpy(data + 4088, &crc, sizeof(crc));
+}
+
+static void testConfigurationPowerCuts()
+{
+    module = nullptr;
+    flash.fill(0xff);
+    Config::resetConfig();
+    auto updated = globalConfig;
+    strcpy(updated.wifi.ssid, "home-network");
+    strcpy(updated.wifi.pass, "wifi-password");
+    strcpy(updated.mqtt.server, "192.168.1.10");
+    updated.mqtt.port = 1883;
+    strcpy(updated.http.pass, "2$000102030405060708090a0b0c0d0e0f$6bb6535cc4adff6d2138573f125b9fea7135129df687ca37139a6720c5c8b8e0");
+    const uint8_t legacyRuntime[] = {0x08, 0x0b, 0xc8, 0x01, 0x7b, 0xd8, 0x01, 0x7b};
+    updated.module_cfg.size = sizeof(legacyRuntime);
+    memcpy(updated.module_cfg.bytes, legacyRuntime, sizeof(legacyRuntime));
+    updated.module_crc = Config::crc16(updated.module_cfg.bytes, updated.module_cfg.size);
+    updated.cfg_version = 1;
+    checkConfigurationCuts("first save", updated);
+    strcpy(updated.wifi.ntp, "ntp1.aliyun.com");
+    checkConfigurationCuts("slot B to A", updated);
+    ++updated.mqtt.port;
+    updated.http.pass[strlen(updated.http.pass) - 1] = '1';
+    checkConfigurationCuts("slot A to B", updated);
+
+    // The backup starts out as arbitrary old OTA data, not a freshly erased area.
+    flash.fill(0xa5);
+    Config::resetConfig();
+    storeLegacyConfig();
+    checkConfigurationCuts("legacy migration", updated);
+    auto baseline = flash;
+    failRead = true;
+    ++globalConfig.mqtt.port;
+    assert(!Config::saveConfig() && flash == baseline);
+
+    // Both slots are committed; corruption and malformed Protobuf fall back.
+    flash.fill(0xff);
+    globalConfig = updated;
+    assert(Config::saveConfig()); // B, generation 1.
+    auto previous = globalConfig;
+    ++updated.mqtt.port;
+    globalConfig = updated;
+    assert(Config::saveConfig()); // A, generation 2.
+    baseline = flash;
+    flash[CONFIG + 4088] ^= 1;
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &previous, sizeof(previous)) == 0);
+    flash = baseline;
+    memset(flash.data() + CONFIG + 4092, 0xff, 4); // Never committed.
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &previous, sizeof(previous)) == 0);
+    uint32_t marker;
+    memcpy(&marker, baseline.data() + CONFIG + 4092, 4);
+    for (unsigned bit = 0; bit < 32; ++bit)
+    {
+        if (marker & (1U << bit)) continue;
+        flash = baseline;
+        uint32_t torn = marker | (1U << bit); // One commit bit was never programmed.
+        memcpy(flash.data() + CONFIG + 4092, &torn, 4);
+        Config::readConfig();
+        assert(memcmp(&globalConfig, &previous, sizeof(previous)) == 0);
+    }
+    flash = baseline;
+    flash[CONFIG + 2] = 0; flash[CONFIG + 3] = 2;
+    flash[CONFIG + 6] = 0x0a; flash[CONFIG + 7] = 0xff;
+    uint16_t crc = Config::crc16(flash.data() + CONFIG + 6, 2);
+    flash[CONFIG + 4] = crc >> 8; flash[CONFIG + 5] = crc;
+    fixFooterCrc(CONFIG);
+    checkConfigurationCuts("invalid newer Protobuf", updated);
+
+    // Generation comparison also works across UINT32_MAX -> 0.
+    uint32_t generation = UINT32_MAX;
+    memcpy(flash.data() + CONFIG + 4084, &generation, 4); fixFooterCrc(CONFIG);
+    --generation;
+    memcpy(flash.data() + BACKUP + 4084, &generation, 4); fixFooterCrc(BACKUP);
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &updated, sizeof(updated)) == 0);
+    ++globalConfig.mqtt.port;
+    auto wrapped = globalConfig;
+    assert(Config::saveConfig());
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &wrapped, sizeof(wrapped)) == 0);
+    memcpy(&generation, flash.data() + BACKUP + 4084, 4);
+    assert(generation == 0);
+    puts("PASS: config CRC/commit/Protobuf fallback, read failures, generation wrap, and flash isolation");
 }
 
 static void testRuntimeStorage()
@@ -391,6 +560,7 @@ int main()
     testRestartPreparation();
     testPasswordRecovery();
     testRetiredConfigFields();
+    testConfigurationPowerCuts();
     testRuntimeStorage();
     testCorruptRecordRecovery();
     testLegacyDecoding();
