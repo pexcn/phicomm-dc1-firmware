@@ -8,6 +8,7 @@ import hashlib
 import re
 import struct
 import gzip
+import json
 
 root = Path(__file__).resolve().parents[2]
 nanopb = root / '.pio/libdeps/dc1/Nanopb'
@@ -76,6 +77,36 @@ with tempfile.TemporaryDirectory(prefix='dc1-expander-tests-') as build:
                     'tests/host/expander/expander.cpp', 'src/CAT9554.cpp',
                     '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Exercise actual Discovery formatting and topic expansion with memory sanitizers.
+with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
+    source = (root / 'src/DC1.cpp').read_text()
+    start = source.index('void DC1::mqttDiscovery(')
+    (Path(build) / 'mqtt-discovery.inc').write_text(source[start:source.index('// Http', start)])
+    source = (root / 'lib/esp_framework/src/Mqtt.cpp').read_text()
+    start = source.index('String Mqtt::getCmndTopic(')
+    helpers = source[start:source.index('void Mqtt::mqttSetLoopCallback(', start)]
+    start = source.index('String Mqtt::getTopic(')
+    helpers += source[start:source.index('\n#endif', start)]
+    (Path(build) / 'mqtt-topic.inc').write_text(helpers)
+    binary = str(Path(build) / 'discovery')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                    '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
+                    'tests/host/mqtt/discovery.cpp', '-o', binary], cwd=root, check=True)
+    result = subprocess.check_output([binary], text=True)
+    for line in result.splitlines():
+        if line.startswith('PACKET\t'):
+            _, topic, payload = line.split('\t', 2)
+            data = json.loads(payload)
+            assert data['name'] == topic.rsplit('/', 2)[1]
+            assert data['stat_t']
+            if '/switch/' in topic:
+                assert data['cmd_t'] and data['avty_t']
+                assert data['pl_on'] == 'on' and data['pl_off'] == 'off'
+            else:
+                assert data['val_tpl'].startswith('{{value_json.')
+        else:
+            print(line)
 # Feed physical 4800-baud 8E1 edges through the installed serial library and meter.
 with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
     binary = str(Path(build) / 'meter')

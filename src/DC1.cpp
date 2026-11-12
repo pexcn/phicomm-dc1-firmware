@@ -288,21 +288,31 @@ void DC1::mqttConnected()
 
 void DC1::mqttDiscovery(bool isEnable)
 {
-    char topic[50];
+    // Longest sensor path, with room for both configured fields and one NUL.
+    char topic[sizeof(globalConfig.mqtt.discovery_prefix) + sizeof(UID)
+        + sizeof("/sensor/_apparent_power/config") - 2];
     char message[500];
+    auto fits = [](int length, size_t capacity) {
+        if (length >= 0 && size_t(length) < capacity) return true;
+        Debug::AddError(PSTR("MQTT  Discovery formatting failed or exceeded buffer"));
+        return false;
+    };
 
     String availability = Mqtt::getTeleTopic(F("availability"));
     char cmndTopic[100];
-    strcpy(cmndTopic, Mqtt::getCmndTopic(F("power1")).c_str());
+    if (isEnable && !fits(snprintf_P(cmndTopic, sizeof(cmndTopic), PSTR("%s"),
+        Mqtt::getCmndTopic(F("power1")).c_str()), sizeof(cmndTopic))) return;
     for (size_t ch = 0; ch < channels; ch++)
     {
-        sprintf(topic, PSTR("%s/switch/%s_%d/config"), globalConfig.mqtt.discovery_prefix, UID, (ch + 1));
+        int length = snprintf_P(topic, sizeof(topic), PSTR("%s/switch/%s_%u/config"),
+            globalConfig.mqtt.discovery_prefix, UID, unsigned(ch + 1));
+        if (!fits(length, sizeof(topic))) return;
         if (isEnable)
         {
             cmndTopic[strlen(cmndTopic) - 1] = ch + 49;           // 48 + 1 + ch
             powerStatTopic[strlen(powerStatTopic) - 1] = ch + 49; // 48 + 1 + ch
-            sprintf(message,
-                    PSTR("{\"name\":\"%s_%d\","
+            length = snprintf_P(message, sizeof(message),
+                    PSTR("{\"name\":\"%s_%u\","
                          "\"cmd_t\":\"%s\","
                          "\"stat_t\":\"%s\","
                          "\"pl_off\":\"off\","
@@ -310,10 +320,11 @@ void DC1::mqttDiscovery(bool isEnable)
                          "\"avty_t\":\"%s\","
                          "\"pl_avail\":\"online\","
                          "\"pl_not_avail\":\"offline\"}"),
-                    UID, (ch + 1),
+                    UID, unsigned(ch + 1),
                     cmndTopic,
                     powerStatTopic,
                     availability.c_str());
+            if (!fits(length, sizeof(message))) return;
             Mqtt::publish(topic, message, true);
         }
         else
@@ -327,12 +338,14 @@ void DC1::mqttDiscovery(bool isEnable)
     String energy = Mqtt::getTeleTopic(F("energy"));
     for (size_t i = 0; i < 10; i++)
     {
-        sprintf(topic, PSTR("%s/sensor/%s_%s/config"), globalConfig.mqtt.discovery_prefix, UID, tims[i].c_str());
+        int length = snprintf_P(topic, sizeof(topic), PSTR("%s/sensor/%s_%s/config"),
+            globalConfig.mqtt.discovery_prefix, UID, tims[i].c_str());
+        if (!fits(length, sizeof(topic))) return;
         if (isEnable)
         {
             if (tims2[i].length() == 0)
             {
-                sprintf(message,
+                length = snprintf_P(message, sizeof(message),
                         PSTR("{\"name\":\"%s_%s\","
                              "\"stat_t\":\"%s\","
                              "\"val_tpl\":\"{{value_json.%s}}\"}"),
@@ -340,13 +353,14 @@ void DC1::mqttDiscovery(bool isEnable)
             }
             else
             {
-                sprintf(message,
+                length = snprintf_P(message, sizeof(message),
                         PSTR("{\"name\":\"%s_%s\","
                              "\"stat_t\":\"%s\","
                              "\"val_tpl\":\"{{value_json.%s}}\","
                              "\"unit_of_meas\":\"%s\"}"),
                         UID, tims[i].c_str(), energy.c_str(), tims[i].c_str(), tims2[i].c_str());
             }
+            if (!fits(length, sizeof(message))) return;
             Mqtt::publish(topic, message, true);
         }
         else
