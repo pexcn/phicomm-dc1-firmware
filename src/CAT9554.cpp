@@ -150,15 +150,19 @@ bool CAT9554::digitalRead(uint8_t pin)
 
 bool CAT9554::digitalWrite(uint8_t pin, bool value)
 {
+    uint16_t nextMask = this->outputMask;
     if (value)
     {
-        this->outputMask |= (1 << pin);
+        nextMask |= (1 << pin);
     }
     else
     {
-        this->outputMask &= ~(1 << pin);
+        nextMask &= ~(1 << pin);
     }
-    return this->writeGpio();
+    // Failed commands must not leak into the next whole-register write.
+    if (!this->writeByte(OUTPUT_REG, nextMask)) return false;
+    this->outputMask = nextMask;
+    return true;
 }
 
 void CAT9554::pinMode(uint8_t pin, uint8_t mode)

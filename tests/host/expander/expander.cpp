@@ -15,6 +15,7 @@ void attachInterrupt(uint8_t pin, void (*)(), int mode)
 class Probe : public CAT9554 {
 public:
     using CAT9554::CAT9554;
+    uint16_t cachedOutput() const { return outputMask; }
     void checkInitialState() const
     {
         assert(outputMask == 0);
@@ -31,6 +32,45 @@ static void configureRelays(CAT9554 &gpio)
     assert(!Wire.unexpectedHigh);
     assert(Wire.config == 0x0f && Wire.output == 0);
     assert(Wire.readonlyWrites == 0);
+}
+
+static void testFailedOutputWrites()
+{
+    for (bool initiallyOn : {false, true})
+    for (uint8_t pin : {7, 6, 5, 4})
+    for (uint8_t other : {7, 6, 5, 4})
+    {
+        if (pin == other) continue;
+        Wire = TestWire{};
+        Probe gpio(3, 12); gpio.setup(); configureRelays(gpio);
+        Wire.allowHigh = true;
+        if (initiallyOn) assert(gpio.digitalWrite(pin, true));
+        const uint8_t before = Wire.output;
+        const unsigned attempts = Wire.outputAttempts;
+        // Match switchRelay's two calls, each exhausting its I2C retries.
+        Wire.outputFailures = 2 * I2C_RETRY_COUNTER;
+        for (unsigned call = 0; call < 2; ++call)
+        {
+            assert(!gpio.digitalWrite(pin, !initiallyOn));
+            assert(Wire.output == before && gpio.cachedOutput() == before);
+        }
+        assert(Wire.outputAttempts == attempts + 2 * I2C_RETRY_COUNTER);
+        // Neither another output nor a configuration write may replay the failed change.
+        const unsigned nextAt = Wire.outputAttempts;
+        assert(gpio.digitalWrite(other, true));
+        assert(Wire.outputAttempts == nextAt + 1);
+        const uint8_t expected = before | (1U << other);
+        assert(Wire.output == expected && gpio.cachedOutput() == expected);
+        gpio.pinMode(0, INPUT);
+        assert(Wire.output == expected && gpio.cachedOutput() == expected);
+
+        // A successful final retry must commit the new cache and output together.
+        Wire.outputFailures = I2C_RETRY_COUNTER - 1;
+        const unsigned retryAt = Wire.outputAttempts;
+        assert(gpio.digitalWrite(pin, !initiallyOn));
+        assert(Wire.outputAttempts == retryAt + I2C_RETRY_COUNTER);
+        assert(Wire.output == (expected ^ (1U << pin)) && gpio.cachedOutput() == Wire.output);
+    }
 }
 
 int main()
@@ -85,5 +125,6 @@ int main()
     Wire = TestWire{}; Wire.configFailures = I2C_RETRY_COUNTER;
     Probe directionFailure(3, 12); directionFailure.setup(); directionFailure.pinMode(7, OUTPUT);
     assert(Wire.config == 0xff && Wire.output == 0 && !Wire.unexpectedHigh);
-    puts("PASS: actual CAT9554: poisoned allocation, latch-before-direction, warm boot, read/write failures, final retry and isolated relay writes");
+    testFailedOutputWrites();
+    puts("PASS: actual CAT9554: poisoned allocation, latch-before-direction, warm boot, I2C failures, final retry and failed-write cache isolation across relay pairs");
 }
