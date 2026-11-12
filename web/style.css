@@ -351,8 +351,12 @@ small {
   gap: 16px;
   margin-bottom: 24px;
 }
-#page-title:focus {
+#page-title:focus,
+#runtime-storage:focus {
   outline: none;
+}
+#runtime-storage {
+  scroll-margin-top: 20px;
 }
 #page-description {
   font-size: 13px;

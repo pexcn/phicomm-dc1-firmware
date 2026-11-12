@@ -101,15 +101,31 @@ document.addEventListener('keydown', (event) => {
 });
 setDrawer(false);
 
+function focusView(scrollToTop = false) {
+  const target = $(
+    location.hash === '#system/storage' && config?.features.module
+      ? '#runtime-storage'
+      : '#page-title'
+  );
+  target.focus({ preventScroll: true });
+  if (target.id === 'runtime-storage') target.scrollIntoView({ block: 'start' });
+  else if (scrollToTop) window.scrollTo(0, 0);
+}
+
 function navigate(focus = false) {
-  let route = location.hash.slice(1) || 'overview';
+  let route = location.hash.slice(1).split('/')[0] || 'overview';
   if (
     !routes[route] ||
     (config && route === 'settings' && !config.features.module) ||
     (config && route === 'logs' && !config.features.logs)
   )
     route = 'overview';
-  if (location.hash !== '#' + route) history.replaceState(null, '', '#' + route);
+  const storage =
+    route === 'system' &&
+    location.hash === '#system/storage' &&
+    (!config || config.features.module);
+  const hash = '#' + route + (storage ? '/storage' : '');
+  if (location.hash !== hash) history.replaceState(null, '', hash);
   activeView = route;
   document.documentElement.dataset.page = route;
   $$('.view').forEach((view) => {
@@ -122,18 +138,15 @@ function navigate(focus = false) {
   $('#page-title').textContent = routes[route][0];
   $('#page-description').textContent = routes[route][1];
   setDrawer(false, false);
-  if (focus) {
-    $('#page-title').focus({ preventScroll: true });
-    window.scrollTo(0, 0);
-  }
+  if (focus) focusView(true);
   schedulePoll(0);
 }
 window.addEventListener('hashchange', () => navigate(true));
-$$('[data-route]').forEach((link) =>
+$$('[data-route], a[href="#system/storage"]').forEach((link) =>
   link.addEventListener('click', () => {
     if (location.hash === link.getAttribute('href')) {
       setDrawer(false, false);
-      $('#page-title').focus();
+      focusView(true);
     }
   })
 );
@@ -776,7 +789,7 @@ async function enterApp() {
   $('#login-screen').hidden = true;
   document.body.classList.remove('auth-screen');
   await loadConfig();
-  if (loggedIn) $('#page-title').focus({ preventScroll: true });
+  if (loggedIn) focusView();
 }
 
 async function checkLogin() {

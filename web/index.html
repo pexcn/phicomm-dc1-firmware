@@ -227,7 +227,7 @@
       </div>
       <div id="status-warning" class="notice warning" role="status" hidden></div>
       <div id="storage-warning" class="notice warning" hidden>
-        <span id="storage-warning-text"></span> <a href="#system">检查存储</a>
+        <span id="storage-warning-text"></span> <a href="#system/storage">检查存储</a>
       </div>
 
       <section id="view-overview" class="view" aria-label="设备概览">
@@ -397,7 +397,7 @@
             <span>开关记忆 <span id="relay-summary">--</span></span
             ><span>电量记录 <span id="energy-summary">--</span></span>
           </div>
-          <a href="#system">存储详情 ›</a>
+          <a href="#system/storage">存储详情 ›</a>
         </div>
         <p class="caption" id="updated-at">正在读取设备状态…</p>
       </section>
@@ -738,7 +738,13 @@
               </div>
             </fieldset>
           </form>
-          <section class="card" data-module>
+          <section
+            id="runtime-storage"
+            class="card"
+            data-module
+            tabindex="-1"
+            aria-label="用电统计与存储"
+          >
             <h2>用电统计与存储</h2>
             <p class="hint">用电量每 8 小时及跨日保存，突然断电可能丢失尚未保存的增量。</p>
             <dl class="data-list">
