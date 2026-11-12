@@ -180,6 +180,29 @@ with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
                     'tests/host/meter/meter.cpp', 'src/CSE7766.cpp',
                     str(serial / 'SoftwareSerial.cpp'), '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Exercise actual uptime formatting, HTTP fields and heartbeat with a 64-bit clock.
+with tempfile.TemporaryDirectory(prefix='dc1-uptime-tests-') as build:
+    source = (root / 'lib/esp_framework/src/Rtc.cpp').read_text()
+    start = source.index('String Rtc::uptime()')
+    (Path(build) / 'uptime-rtc.inc').write_text(source[start:source.index('void Rtc::breakTime(', start)])
+    source = (root / 'lib/esp_framework/src/Mqtt.cpp').read_text()
+    start = source.index('void Mqtt::doReportHeartbeat()')
+    (Path(build) / 'uptime-heartbeat.inc').write_text(source[start:source.index('void Mqtt::availability()', start)])
+    source = (root / 'lib/esp_framework/src/Http.cpp').read_text()
+    fields = next(line for line in source.splitlines() if 'Rtc::uptime().c_str()' in line)
+    (Path(build) / 'uptime-status.inc').write_text(fields + '\n')
+    binary = str(Path(build) / 'uptime')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                    '-I' + build, 'tests/host/uptime.cpp', '-o', binary], cwd=root, check=True)
+    for line in subprocess.check_output([binary], text=True).splitlines():
+        if line.startswith('UPTIME\t'):
+            _, seconds, heartbeat, status = line.split('\t', 3)
+            data = json.loads(heartbeat)
+            assert type(data['uptime']) is int and data['uptime'] == int(seconds)
+            assert re.fullmatch(r'\d+T\d{2}:\d{2}:\d{2}', json.loads(status)['uptime'])
+        else:
+            print(line)
 # Exercise the real authentication code with the core's portable BearSSL sources.
 bear = core / 'packages/framework-arduinoespressif8266/tools/sdk/ssl/bearssl'
 with tempfile.TemporaryDirectory(prefix='dc1-auth-tests-') as build:

@@ -43,7 +43,7 @@ public:
     static RtcReboot rtcReboot;
     static TIME_T rtcTime;
 
-    static String msToHumanString(uint32_t const msecs);
+    static String uptime();
 
     static String GetBuildDateAndTime();
     static void perSecondDo();

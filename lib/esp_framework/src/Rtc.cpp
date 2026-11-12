@@ -50,22 +50,23 @@ String Rtc::GetBuildDateAndTime()
     return String(bdt); // 2017-03-07T11:08:02
 }
 
-String Rtc::msToHumanString(uint32_t const msecs)
+String Rtc::uptime()
 {
-    uint32_t totalseconds = msecs / 1000;
+    // Core monotonic clock: 32-bit seconds span 136 years without a millis wrap.
+    uint32_t totalseconds = micros64() / 1000000;
     if (totalseconds == 0)
     {
         return F("0T00:00:00");
     }
 
-    // Note: millis() can only count up to 45 days, so uint8_t is safe.
-    uint8_t days = totalseconds / (60 * 60 * 24);
+    uint32_t days = totalseconds / (60 * 60 * 24);
     uint8_t hours = (totalseconds / (60 * 60)) % 24;
     uint8_t minutes = (totalseconds / 60) % 60;
     uint8_t seconds = totalseconds % 60;
 
     char dt[16];
-    snprintf_P(dt, sizeof(dt), PSTR("%dT%02d:%02d:%02d"), days, hours, minutes, seconds);
+    snprintf_P(dt, sizeof(dt), PSTR("%uT%02u:%02u:%02u"),
+        unsigned(days), unsigned(hours), unsigned(minutes), unsigned(seconds));
     return String(dt);
 }
 

@@ -610,7 +610,7 @@ void Http::handleGetStatus()
     server->setContentLength(CONTENT_LENGTH_UNKNOWN);
     server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"\",\"data\":{"));
 
-    snprintf_P(tmpData, sizeof(tmpData), PSTR("\"uptime\":\"%s\",\"free_mem\":%d,\"rssi\":%d"), Rtc::msToHumanString(millis()).c_str(), ESP.getFreeHeap() / 1024, WiFi.RSSI());
+    snprintf_P(tmpData, sizeof(tmpData), PSTR("\"uptime\":\"%s\",\"free_mem\":%d,\"rssi\":%d"), Rtc::uptime().c_str(), ESP.getFreeHeap() / 1024, WiFi.RSSI());
     server->sendContent_P(tmpData);
 
 #ifndef DISABLE_MQTT
