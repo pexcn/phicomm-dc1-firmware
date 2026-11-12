@@ -192,12 +192,26 @@ void Wifi::loop()
     }
 }
 
-bool Wifi::isIp(String str)
+bool Wifi::isIp(const String &str)
 {
-    int a, b, c, d;
-    if ((sscanf(str.c_str(), "%d.%d.%d.%d", &a, &b, &c, &d) == 4) && (a >= 0 && a <= 255) && (b >= 0 && b <= 255) && (c >= 0 && c <= 255) && (d >= 0 && d <= 255))
+    if (str.length() < 7 || str.length() > 15) return false;
+    uint16_t value = 0;
+    uint8_t dots = 0, digits = 0;
+    for (size_t i = 0; i < str.length(); ++i)
     {
-        return true;
+        char c = str[i];
+        if (c >= '0' && c <= '9')
+        {
+            value = value * 10 + (c - '0');
+            if (++digits > 3 || value > 255) return false;
+        }
+        else if (c == '.' && digits && dots < 3)
+        {
+            ++dots;
+            digits = 0;
+            value = 0;
+        }
+        else return false;
     }
-    return false;
+    return dots == 3 && digits != 0;
 }

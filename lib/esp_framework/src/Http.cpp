@@ -375,10 +375,35 @@ void Http::handledhcp()
         return;
     }
 
-    if (isStatic && (static_ip.v4() & static_sn.v4()) != (static_gw.v4() & static_sn.v4()))
+    if (isStatic)
     {
-        server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"网段错误\"}"));
-        return;
+        auto addressValue = [](const IPAddress &address) {
+            return (uint32_t(address[0]) << 24) | (uint32_t(address[1]) << 16)
+                | (uint32_t(address[2]) << 8) | address[3];
+        };
+        const uint32_t mask = addressValue(static_sn), hostMask = ~mask;
+        if (!mask || (hostMask & (hostMask + 1)))
+        {
+            server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"子网掩码必须非零且连续。\"}"));
+            return;
+        }
+        auto isHost = [&](const IPAddress &address) {
+            const uint8_t first = address[0];
+            const uint32_t host = addressValue(address) & hostMask;
+            // /31 point-to-point and /32 host routes have no directed broadcast.
+            return first != 0 && first != 127 && first < 224
+                && (hostMask <= 1 || (host != 0 && host != hostMask));
+        };
+        if (!isHost(static_ip) || !isHost(static_gw))
+        {
+            server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"IP和网关必须为有效单播主机地址，不能为网络或广播地址。\"}"));
+            return;
+        }
+        if ((static_ip.v4() & static_sn.v4()) != (static_gw.v4() & static_sn.v4()))
+        {
+            server->send_P(200, PSTR("text/html"), PSTR("{\"code\":0,\"msg\":\"网段错误\"}"));
+            return;
+        }
     }
 
     const bool restartRequired = globalConfig.wifi.is_static != isStatic
@@ -869,7 +894,10 @@ void Http::loop()
 
 bool Http::captivePortal()
 {
-    if (!Wifi::isIp(server->hostHeader()))
+    String host = server->hostHeader();
+    const int port = host.indexOf(':');
+    if (port >= 0) host.remove(port);
+    if (!Wifi::isIp(host))
     {
         server->sendHeader(F("Location"), String(F("http://")) + server->client().localIP().toString(), true);
         server->send(302, F("text/plain"), ""); // Empty content inhibits Content-length header so we have to close the socket ourselves.

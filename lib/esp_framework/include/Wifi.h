@@ -32,7 +32,7 @@ public:
     static void connectWifi();
     static void setupWifi();
     static void setupWifiManager(bool resetSettings);
-    static bool isIp(String str);
+    static bool isIp(const String &str);
 
     static void tryConnect(String ssid, String pass);
 
