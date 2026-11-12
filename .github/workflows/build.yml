@@ -33,7 +33,7 @@ jobs:
       - name: Run PlatformIO
         run: platformio run
 
-      - name: Test persistence policies
+      - name: Run critical regression tests
         run: python3 tests/host/run.py
 
       - name: Set release tag

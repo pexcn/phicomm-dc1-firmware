@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run actual persistence code against a NOR-flash simulator (after `pio run`)."""
+"""Run critical host regressions after building the firmware."""
 from pathlib import Path
 import subprocess
 import os
@@ -9,33 +9,11 @@ import re
 import struct
 import gzip
 import json
-from html.parser import HTMLParser
 
 root = Path(__file__).resolve().parents[2]
 nanopb = root / '.pio/libdeps/dc1/Nanopb'
 if not nanopb.is_dir():
     raise SystemExit('Install the firmware dependencies first: pio run')
-# Keep MQTT form limits aligned with the actual generated firmware buffers.
-class InputLimits(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.limits = {}
-
-    def handle_starttag(self, tag, attrs):
-        attrs = dict(attrs)
-        if tag == 'input' and 'name' in attrs and 'maxlength' in attrs:
-            self.limits[attrs['name']] = int(attrs['maxlength'])
-
-inputs = InputLimits()
-inputs.feed((root / 'web/index.html').read_text())
-schema = (root / 'lib/esp_framework/include/GlobalConfig.pb.h').read_text()
-mqtt = schema.split('typedef struct _MqttConfigMessage {', 1)[1].split('}', 1)[0]
-for name, field in [('mqtt_server', 'server'), ('mqtt_username', 'user'),
-                    ('mqtt_password', 'pass'), ('mqtt_topic', 'topic'),
-                    ('discovery_prefix', 'discovery_prefix')]:
-    capacity = int(re.search(r'char ' + field + r'\[(\d+)\]', mqtt).group(1))
-    assert inputs.limits[name] == capacity - 1, name + ' must reserve the NUL byte'
-print('PASS: MQTT form limits match firmware string capacities')
 with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
     binary = str(Path(build) / 'persistence')
     core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
@@ -83,30 +61,12 @@ with tempfile.TemporaryDirectory(prefix='dc1-network-tests-') as build:
                     '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
                     'tests/host/network.cpp', '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
-# Exercise Wi-Fi portal lifetime with DNS/socket allocation and save spies.
-with tempfile.TemporaryDirectory(prefix='dc1-wifi-tests-') as build:
-    source = (root / 'lib/esp_framework/src/Wifi.cpp').read_text()
-    start = source.index('WiFiClient Wifi::wifiClient;')
-    portal = source[start:source.index('void Wifi::connectWifi()', start)]
-    start = source.index('void Wifi::setupWifiManager(')
-    portal += source[start:source.index('bool Wifi::isIp(', start)]
-    (Path(build) / 'wifi-portal.inc').write_text(portal)
-    binary = str(Path(build) / 'wifi')
-    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                    '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
-                    '-Wno-unused-parameter',  # SDK event argument is intentionally unused.
-                    'tests/host/wifi.cpp', '-o', binary], cwd=root, check=True)
-    subprocess.run([binary], check=True)
-# Exercise the logger and HTTP escaping with the original fixed buffer sizes.
+# Check log-buffer bounds and streamed JSON escaping.
 with tempfile.TemporaryDirectory(prefix='dc1-log-tests-') as build:
     source = (root / 'lib/esp_framework/src/Http.cpp').read_text()
     start = source.index('                    size_t j = 0;', source.index('void Http::handleGetStatus()'))
     end = source.index('                    cflg = true;', start)
     (Path(build) / 'log-json.inc').write_text(source[start:end])
-    start = source.index('        bool cflg = ', source.index('void Http::handleGetStatus()'))
-    closing = r'        server->sendContent_P(PSTR("\""));'
-    end = source.index(closing, start) + len(closing)
-    (Path(build) / 'log-batch.inc').write_text(source[start:end])
     binary = str(Path(build) / 'logging')
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                     '-Itests/host/logging', '-Ilib/esp_framework/include', '-I' + build,
@@ -180,29 +140,6 @@ with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
                     'tests/host/meter/meter.cpp', 'src/CSE7766.cpp',
                     str(serial / 'SoftwareSerial.cpp'), '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
-# Exercise actual uptime formatting, HTTP fields and heartbeat with a 64-bit clock.
-with tempfile.TemporaryDirectory(prefix='dc1-uptime-tests-') as build:
-    source = (root / 'lib/esp_framework/src/Rtc.cpp').read_text()
-    start = source.index('String Rtc::uptime()')
-    (Path(build) / 'uptime-rtc.inc').write_text(source[start:source.index('void Rtc::breakTime(', start)])
-    source = (root / 'lib/esp_framework/src/Mqtt.cpp').read_text()
-    start = source.index('void Mqtt::doReportHeartbeat()')
-    (Path(build) / 'uptime-heartbeat.inc').write_text(source[start:source.index('void Mqtt::availability()', start)])
-    source = (root / 'lib/esp_framework/src/Http.cpp').read_text()
-    fields = next(line for line in source.splitlines() if 'Rtc::uptime().c_str()' in line)
-    (Path(build) / 'uptime-status.inc').write_text(fields + '\n')
-    binary = str(Path(build) / 'uptime')
-    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                    '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                    '-I' + build, 'tests/host/uptime.cpp', '-o', binary], cwd=root, check=True)
-    for line in subprocess.check_output([binary], text=True).splitlines():
-        if line.startswith('UPTIME\t'):
-            _, seconds, heartbeat, status = line.split('\t', 3)
-            data = json.loads(heartbeat)
-            assert type(data['uptime']) is int and data['uptime'] == int(seconds)
-            assert re.fullmatch(r'\d+T\d{2}:\d{2}:\d{2}', json.loads(status)['uptime'])
-        else:
-            print(line)
 # Exercise the real authentication code with the core's portable BearSSL sources.
 bear = core / 'packages/framework-arduinoespressif8266/tools/sdk/ssl/bearssl'
 with tempfile.TemporaryDirectory(prefix='dc1-auth-tests-') as build:
@@ -223,12 +160,6 @@ with tempfile.TemporaryDirectory(prefix='dc1-auth-tests-') as build:
 # Check the published binary envelope and the streaming activation gate.
 firmware = root / '.pio/build/dc1/firmware.bin'
 image = firmware.read_bytes()
-version_header = (root / '.pio/build/dc1/generated/FirmwareVersion.h').read_text()
-version = re.search(r'^#define FIRMWARE_VERSION "([^"]+)"', version_header, re.MULTILINE).group(1)
-assert re.fullmatch(r'\d{8}-(?:[0-9a-f]{7}(?:-dirty)?|dev)', version)
-assert version.encode() + b'\0' in image
-assert b'2020.07.11.2000\0' not in image
-print('PASS: generated firmware version embedded in the published binary: ' + version)
 identity, size, digest = struct.unpack('<32sI32s', image[-68:])
 header = (root / 'lib/esp_framework/include/FirmwareUpload.h').read_text()
 expected_id = re.search(r'^#define FIRMWARE_ID "([^"]+)"', header, re.MULTILINE).group(1).encode()

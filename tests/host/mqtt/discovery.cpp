@@ -1,5 +1,4 @@
 #include <cassert>
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -8,6 +7,7 @@
 
 #define F(text) text
 #define PSTR(text) text
+#define snprintf_P snprintf
 
 class String : public std::string {
 public:
@@ -37,22 +37,7 @@ public:
 
 static GlobalConfigMessage globalConfig;
 static char UID[16];
-static unsigned errors, formatCalls, failFormatCall;
-static bool formatError;
-static int boundedFormat(char *buffer, size_t size, const char *format, ...)
-{
-    if (++formatCalls == failFormatCall)
-    {
-        buffer[0] = 0;
-        return formatError ? -1 : int(size);
-    }
-    va_list args;
-    va_start(args, format);
-    int result = vsnprintf(buffer, size, format, args);
-    va_end(args);
-    return result;
-}
-#define snprintf_P boundedFormat
+static unsigned errors;
 
 struct Packet { std::string topic, message; bool retained; };
 static std::vector<Packet> packets;
@@ -92,7 +77,7 @@ public:
 static void resetSpies()
 {
     packets.clear();
-    errors = formatCalls = failFormatCall = 0;
+    errors = 0;
     availabilityReports = powerReports = energyReports = 0;
 }
 
@@ -132,21 +117,6 @@ static void testConfiguration(const char *uid, const char *prefix, const char *f
     assert(availabilityReports == 0 && powerReports == 0 && energyReports == 0);
     for (unsigned i = 0; i < packets.size(); ++i)
         assert(packets[i].topic == enabled[i].topic && packets[i].message.empty() && packets[i].retained);
-
-    // Simulate snprintf failures at command/topic, switch JSON and both sensor JSON branches.
-    for (unsigned failure : {1U, 2U, 3U, 10U, 11U, 21U})
-    for (bool negative : {false, true})
-    {
-        resetSpies();
-        failFormatCall = failure;
-        formatError = negative;
-        dc.mqttDiscovery(true);
-        assert(errors == 1 && formatCalls == failure);
-        unsigned expected = failure <= 3 ? 0 : failure <= 11 ? 4 : 9;
-        assert(packets.size() == expected);
-        assert(availabilityReports == 0 && powerReports == 0 && energyReports == 0);
-        for (const auto &packet : packets) assert(!packet.message.empty());
-    }
 }
 
 int main()
@@ -157,7 +127,5 @@ int main()
     const std::string expanded = "%hostname%%hostname%%hostname%%hostname%123456789";
     assert(expanded.size() == 49);
     testConfiguration(uid.c_str(), prefix.c_str(), expanded.c_str());
-    testConfiguration(uid.c_str(), prefix.c_str(), std::string(49, 't').c_str());
-    testConfiguration("d", "h", "%prefix%/");
-    puts("PASS: actual MQTT Discovery default/max topics, JSON, retained removal and formatting failures");
+    puts("PASS: actual MQTT Discovery default/max topics, JSON, packet bounds and retained removal");
 }

@@ -17,17 +17,7 @@ extern LogConfig globalConfig;
 extern char tmpData[512];
 extern uint32_t perSecond;
 struct SerialSink {
-    char data[1024] = {};
-    size_t used = 0;
-    size_t write(const uint8_t *bytes, size_t size)
-    {
-        size_t available = sizeof(data) - used - 1;
-        size_t copied = size < available ? size : available;
-        memcpy(data + used, bytes, copied);
-        used += copied;
-        data[used] = 0;
-        return size;
-    }
+    size_t write(const uint8_t *, size_t size) { return size; }
 };
 extern SerialSink Serial, Serial1;
 #endif

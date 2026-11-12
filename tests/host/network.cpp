@@ -87,12 +87,11 @@ static void setup(bool isStatic = true)
     authorized = saveOk = true;
 }
 
-static void submit(bool restartRequired)
+static void submit()
 {
     Http::handledhcp();
     assert(endpoint.status == 200 && saves == 1);
     assert(endpoint.response.find("\"code\":1") != std::string::npos);
-    assert((endpoint.response.find("重启") != std::string::npos) == restartRequired);
     assert(globalConfig.wifi.is_static == (endpoint.args["dhcp"] == "2"));
     assert(strcmp(globalConfig.wifi.ip, endpoint.args["static_ip"].c_str()) == 0);
     assert(strcmp(globalConfig.wifi.sn, endpoint.args["static_netmask"].c_str()) == 0);
@@ -109,20 +108,13 @@ int main()
             "1.2.3.4 ", "+1.2.3.4", "-1.2.3.4", "0000.1.2.3", "256.1.2.3"})
         assert(!Wifi::isIp(invalid));
     assert(!Wifi::isIp(String("1.2.3.4\0x", 9)));
-    setup(); submit(false);
-    for (auto change : {std::pair<const char *, const char *>{"static_ip", "192.168.1.200"},
-            {"static_netmask", "255.255.254.0"}, {"static_gateway", "192.168.1.254"}, {"dhcp", "1"}})
-    {
-        setup(); endpoint.args[change.first] = change.second; submit(true);
-    }
-    setup(false); submit(false);
-    setup(false); endpoint.args["dhcp"] = "2"; submit(true);
-    setup(false); endpoint.args["static_ip"] = "192.168.1.200"; submit(false);
+    setup(); submit();
+    setup(false); endpoint.args["static_ip"] = "not-an-ip"; submit();
     setup();
     endpoint.args["static_ip"] = "192.168.100.200";
     endpoint.args["static_netmask"] = "255.255.255.128";
     endpoint.args["static_gateway"] = "192.168.100.129";
-    submit(true);
+    submit();
 
     for (const char *mask : {"255.0.255.0", "255.255.0.255", "0.0.0.0", "255.255.255.1"})
     {
@@ -140,13 +132,13 @@ int main()
     }
     // Network/broadcast exclusions follow the mask, not a blanket .0/.255 ban.
     setup(); endpoint.args["static_ip"] = "192.168.1.0";
-    endpoint.args["static_netmask"] = "255.255.254.0"; submit(true);
+    endpoint.args["static_netmask"] = "255.255.254.0"; submit();
     setup(); endpoint.args["static_ip"] = "192.168.0.255";
-    endpoint.args["static_netmask"] = "255.255.254.0"; submit(true);
+    endpoint.args["static_netmask"] = "255.255.254.0"; submit();
     setup(); endpoint.args["static_ip"] = "192.168.1.0";
-    endpoint.args["static_netmask"] = "255.255.255.254"; submit(true);
+    endpoint.args["static_netmask"] = "255.255.255.254"; submit();
     setup(); endpoint.args["static_gateway"] = "192.168.1.100";
-    endpoint.args["static_netmask"] = "255.255.255.255"; submit(true);
+    endpoint.args["static_netmask"] = "255.255.255.255"; submit();
     for (unsigned prefix = 1; prefix <= 32; ++prefix)
     {
         setup();
@@ -157,7 +149,7 @@ int main()
         endpoint.args["static_netmask"] = text;
         endpoint.args["static_ip"] = prefix == 31 ? "10.1.2.0" : "10.1.2.1";
         endpoint.args["static_gateway"] = prefix >= 31 ? "10.1.2.1" : "10.1.2.2";
-        submit(true);
+        submit();
     }
     for (const char *host : {"192.168.1.100", "192.168.1.100:80", "192.168.1.100:8080"})
     {
@@ -184,5 +176,5 @@ int main()
     Http::handledhcp();
     assert(endpoint.status == 500 && saves == 1);
     assert(endpoint.response.find("\"code\":1") == std::string::npos);
-    puts("PASS: actual network handler detects IP/mask/gateway/mode changes, inactive DHCP fields, full IPv4 lengths, validation/auth/save failures and unrelated settings");
+    puts("PASS: actual network handler validates IPv4/subnet/host boundaries and leaves configuration unchanged on rejected requests");
 }

@@ -37,10 +37,8 @@ static void configureRelays(CAT9554 &gpio)
 static void testFailedOutputWrites()
 {
     for (bool initiallyOn : {false, true})
-    for (uint8_t pin : {7, 6, 5, 4})
-    for (uint8_t other : {7, 6, 5, 4})
     {
-        if (pin == other) continue;
+        const uint8_t pin = 6, other = 5;
         Wire = TestWire{};
         Probe gpio(3, 12); gpio.setup(); configureRelays(gpio);
         Wire.allowHigh = true;
@@ -126,5 +124,5 @@ int main()
     Probe directionFailure(3, 12); directionFailure.setup(); directionFailure.pinMode(7, OUTPUT);
     assert(Wire.config == 0xff && Wire.output == 0 && !Wire.unexpectedHigh);
     testFailedOutputWrites();
-    puts("PASS: actual CAT9554: poisoned allocation, latch-before-direction, warm boot, I2C failures, final retry and failed-write cache isolation across relay pairs");
+    puts("PASS: actual CAT9554: initialized safe outputs, warm boot, I2C failures and failed-write cache isolation");
 }

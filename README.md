@@ -37,7 +37,7 @@ python -m pip install platformio==6.2.0
 pio run
 ```
 
-固件输出为 `output/dc1.bin`。Linux 下可运行 `python tests/host/run.py` 检查存储回归，需先完成编译并安装 GCC/G++。
+固件输出为 `output/dc1.bin`。Linux 下可运行 `python tests/host/run.py` 检查断电存储、认证、OTA、采样和继电器等关键回归，需先完成编译并安装 GCC/G++。
 
 1 MB Flash 中，配置槽位于 `0xFB000` 和 `0x74000`；原 LittleFS 与旧开关记录地址保留。固件文件上限为 464 KiB，编译与 OTA 均检查边界，避免覆盖配置备用槽。
 
