@@ -779,90 +779,78 @@
             </div>
             <p class="caption">仅在首次使用或出现异常时，按提示初始化或恢复对应记录。</p>
           </section>
-          <details class="card advanced">
-            <summary>设备与硬件详情</summary>
-            <div class="advanced-content">
-              <dl class="data-list">
-                <div>
-                  <dt>编译时间</dt>
-                  <dd data-value="build_time">--</dd>
-                </div>
-                <div>
-                  <dt>Flash 容量</dt>
-                  <dd><span data-value="flash_size">--</span> kB</dd>
-                </div>
-                <div>
-                  <dt>固件配置容量</dt>
-                  <dd><span data-value="flash_config_size">--</span> kB</dd>
-                </div>
-                <div>
-                  <dt>固件大小</dt>
-                  <dd><span data-value="sketch_size">--</span> kB</dd>
-                </div>
-                <div>
-                  <dt>OTA 可用空间</dt>
-                  <dd><span data-value="ota_space">--</span> kB</dd>
-                </div>
-                <div>
-                  <dt>内核 / SDK</dt>
-                  <dd data-value="core_sdk">--</dd>
-                </div>
-                <div>
-                  <dt>重启原因</dt>
-                  <dd data-value="reset_reason">--</dd>
-                </div>
-                <div>
-                  <dt>MAC 地址</dt>
-                  <dd data-value="mac">--</dd>
-                </div>
-                <div>
-                  <dt>芯片 ID</dt>
-                  <dd data-value="chip_id">--</dd>
-                </div>
-                <div>
-                  <dt>Flash 芯片 ID</dt>
-                  <dd data-value="flash_id">--</dd>
-                </div>
-              </dl>
-            </div>
-          </details>
-          <form
-            class="card advanced"
-            id="module-form"
-            data-settings
-            action="/module_setting"
-            method="post"
-          >
+          <section class="card">
+            <h2>设备与硬件详情</h2>
+            <dl class="data-list">
+              <div>
+                <dt>编译时间</dt>
+                <dd data-value="build_time">--</dd>
+              </div>
+              <div>
+                <dt>Flash 容量</dt>
+                <dd><span data-value="flash_size">--</span> kB</dd>
+              </div>
+              <div>
+                <dt>固件配置容量</dt>
+                <dd><span data-value="flash_config_size">--</span> kB</dd>
+              </div>
+              <div>
+                <dt>固件大小</dt>
+                <dd><span data-value="sketch_size">--</span> kB</dd>
+              </div>
+              <div>
+                <dt>OTA 可用空间</dt>
+                <dd><span data-value="ota_space">--</span> kB</dd>
+              </div>
+              <div>
+                <dt>内核 / SDK</dt>
+                <dd data-value="core_sdk">--</dd>
+              </div>
+              <div>
+                <dt>重启原因</dt>
+                <dd data-value="reset_reason">--</dd>
+              </div>
+              <div>
+                <dt>MAC 地址</dt>
+                <dd data-value="mac">--</dd>
+              </div>
+              <div>
+                <dt>芯片 ID</dt>
+                <dd data-value="chip_id">--</dd>
+              </div>
+              <div>
+                <dt>Flash 芯片 ID</dt>
+                <dd data-value="flash_id">--</dd>
+              </div>
+            </dl>
+          </section>
+          <form class="card" id="module-form" data-settings action="/module_setting" method="post">
             <fieldset disabled>
-              <details>
-                <summary>设备与日志设置</summary>
-                <div class="advanced-content">
-                  <div class="form-grid">
-                    <label class="field"
-                      >主机名<input name="uid" maxlength="15" autocomplete="off" /><small
-                        >留空使用默认名称；更改后设备会重启。</small
-                      ></label
-                    ><label class="field"
-                      >NTP 服务器<input name="ntp" maxlength="39" autocomplete="off" /><small
-                        >用于设备校时。</small
-                      ></label
-                    >
-                  </div>
-                  <div class="check-row">
-                    <label class="check"
-                      ><input name="log_serial" type="checkbox" value="1" />Serial</label
-                    ><label class="check"
-                      ><input name="log_serial1" type="checkbox" value="1" />Serial1</label
-                    ><label class="check" data-feature="logs"
-                      ><input name="log_web" type="checkbox" value="1" />网页日志</label
-                    >
-                  </div>
-                  <div class="form-actions">
-                    <button class="btn" type="submit">保存设备设置</button
-                    ><span class="save-status" role="status"></span>
-                  </div>
-                </div>
-              </details>
+              <h2>设备与日志设置</h2>
+              <div class="form-grid">
+                <label class="field"
+                  >主机名<input name="uid" maxlength="15" autocomplete="off" /><small
+                    >留空使用默认名称；更改后设备会重启。</small
+                  ></label
+                ><label class="field"
+                  >NTP 服务器<input name="ntp" maxlength="39" autocomplete="off" /><small
+                    >用于设备校时。</small
+                  ></label
+                >
+              </div>
+              <div class="check-row">
+                <label class="check"
+                  ><input name="log_serial" type="checkbox" value="1" />Serial</label
+                ><label class="check"
+                  ><input name="log_serial1" type="checkbox" value="1" />Serial1</label
+                ><label class="check" data-feature="logs"
+                  ><input name="log_web" type="checkbox" value="1" />网页日志</label
+                >
+              </div>
+              <div class="form-actions">
+                <button class="btn" type="submit">保存设备设置</button
+                ><span class="save-status" role="status"></span>
+              </div>
             </fieldset>
           </form>
         </div>
