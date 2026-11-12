@@ -136,7 +136,8 @@ with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
     ghostl = root / '.pio/libdeps/dc1/ghostl/src'
     subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                     # The dependency's unused TX path assumes a 32-bit unsigned long.
-                    '-Wno-overflow', '-Itests/host/meter', '-Iinclude', '-I' + build,
+                    '-Wno-overflow', '-fno-builtin-memmove', '-Wl,--wrap=memmove',
+                    '-Itests/host/meter', '-Iinclude', '-I' + build,
                     '-I' + str(serial), '-I' + str(ghostl),
                     'tests/host/meter/meter.cpp', 'src/CSE7766.cpp',
                     str(serial / 'SoftwareSerial.cpp'), '-o', binary], cwd=root, check=True)

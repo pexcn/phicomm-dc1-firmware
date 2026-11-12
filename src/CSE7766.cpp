@@ -138,7 +138,7 @@ void CSE7766::loop()
                 {
                     do
                     { // Sync buffer with data (issue #1907 and #3425)
-                        memmove(this->rawData, this->rawData + 1, 24);
+                        memmove(this->rawData, this->rawData + 1, this->rawDataIndex - 1);
                         this->rawDataIndex--;
                     } while ((this->rawDataIndex > 2) && (0x5A != this->rawData[1]));
                     if (0x5A != this->rawData[1])
