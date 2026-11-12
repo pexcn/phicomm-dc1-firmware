@@ -15,6 +15,9 @@ nanopb = root / '.pio/libdeps/dc1/Nanopb'
 if not nanopb.is_dir():
     raise SystemExit('Install the firmware dependencies first: pio run')
 with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
+    source = (root / 'lib/esp_framework/src/Wifi.cpp').read_text()
+    start = source.index('void Wifi::connectWifi()')
+    (Path(build) / 'wifi-connect.inc').write_text(source[start:source.index('void Wifi::setupWifi()', start)])
     binary = str(Path(build) / 'persistence')
     core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
     littlefs = core / 'packages/framework-arduinoespressif8266/libraries/LittleFS/lib/littlefs'
@@ -33,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                '-Wl,--defsym,_CONFIG_BACKUP_start=0x40274000',
                '-Wl,--defsym,_RELAY_STATE_start=0x402fa000',
                '-Itests/host/stubs', '-Itests/host/auth', '-Ilib/esp_framework/include', '-Iinclude',
-               '-I' + str(nanopb), '-I' + str(littlefs), '-DLFS_NAME_MAX=32',
+               '-I' + str(nanopb), '-I' + str(littlefs), '-I' + build, '-DLFS_NAME_MAX=32',
                'tests/host/persistence.cpp', 'tests/host/littlefs_adapter.cpp',
                'lib/esp_framework/src/Config.cpp', 'lib/esp_framework/src/GlobalConfig.pb.c',
                'src/RuntimeStorage.cpp', 'src/DC1Config.pb.c',

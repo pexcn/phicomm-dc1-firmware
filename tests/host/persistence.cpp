@@ -18,6 +18,18 @@ static const unsigned BACKUP = 0x74000;
 static int cutAfter = -1;
 static unsigned mutations = 0;
 static bool powerOff = false, failRead = false;
+static unsigned portals, stations;
+static void delay(unsigned) {}
+struct Wifi {
+    static void connectWifi();
+    static void setupWifi() { ++stations; }
+    static void setupWifiManager(bool resetSettings)
+    {
+        ++portals;
+        if (resetSettings) Config::resetConfig();
+    }
+};
+#include "wifi-connect.inc"
 static unsigned configErases() { return erases[CONFIG / 4096] + erases[BACKUP / 4096]; }
 static bool mutation()
 {
@@ -70,6 +82,32 @@ int spi_flash_write(uint32 address, uint32 *data, uint32 size)
     if (failWrite) { failWrite = false; return 1; }
     if (corruptWrite) { corruptWrite = false; flash[address] ^= 1; }
     return 0;
+}
+
+static void testInitialProvisioning()
+{
+    flash.fill(0xff);
+    Config::resetConfig();
+    strcpy(globalConfig.http.pass, "2$000102030405060708090a0b0c0d0e0f$6bb6535cc4adff6d2138573f125b9fea7135129df687ca37139a6720c5c8b8e0");
+    strcpy(globalConfig.mqtt.server, "mqtt.lan");
+    strcpy(globalConfig.uid, "my-dc1");
+    assert(globalConfig.wifi.ssid[0] == '\0' && Config::saveConfig());
+    const auto saved = globalConfig;
+    const unsigned before = configErases();
+    memset(&globalConfig, 0, sizeof(globalConfig));
+    Config::readConfig();
+    for (unsigned attempt = 0; attempt < 2; ++attempt)
+    {
+        Wifi::connectWifi();
+        assert(memcmp(&globalConfig, &saved, sizeof(saved)) == 0);
+        assert(Config::saveConfig() && configErases() == before);
+        Config::readConfig();
+    }
+    assert(portals == 2 && stations == 0);
+    strcpy(globalConfig.wifi.ssid, "home-network");
+    Wifi::connectWifi();
+    assert(portals == 2 && stations == 1);
+    puts("PASS: actual initial Wi-Fi dispatch preserves saved admin credentials/configuration across provisioning reboots without flash writes");
 }
 
 static void testConfiguration()
@@ -560,6 +598,7 @@ static void testLegacyDecoding()
 int main()
 {
     testConfiguration();
+    testInitialProvisioning();
     testRestartPreparation();
     testPasswordRecovery();
     testRetiredConfigFields();

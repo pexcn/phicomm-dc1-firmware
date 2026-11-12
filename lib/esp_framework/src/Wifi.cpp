@@ -27,7 +27,8 @@ void Wifi::connectWifi()
     }
     else
     {
-        setupWifiManager(true);
+        // An unset SSID requires provisioning, not a factory reset.
+        setupWifiManager(false);
     }
 }
 
