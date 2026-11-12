@@ -377,6 +377,7 @@ small {
 }
 #updated-at {
   margin-top: 0;
+  text-align: right;
 }
 .section-heading {
   display: flex;
