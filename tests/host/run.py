@@ -95,6 +95,23 @@ with tempfile.TemporaryDirectory(prefix='dc1-expander-tests-') as build:
                     'tests/host/expander/expander.cpp', 'src/CAT9554.cpp',
                     '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Run the real MQTT receive path, including full-buffer QoS 0/1 callbacks.
+with tempfile.TemporaryDirectory(prefix='dc1-payload-tests-') as build:
+    source = (root / 'lib/esp_framework/src/Framework.cpp').read_text()
+    start = source.index('void Framework::callback(')
+    (Path(build) / 'mqtt-callback.inc').write_text(
+        source[start:source.index('void Framework::connectedCallback()', start)])
+    for name in ['Arduino', 'IPAddress', 'Client', 'Stream']:
+        (Path(build) / (name + '.h')).write_text('#include "transport.h"\n')
+    pubsub = root / '.pio/libdeps/dc1/PubSubClient/src'
+    binary = str(Path(build) / 'payload')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-Wno-sign-compare', '-DMQTT_MAX_PACKET_SIZE=768',
+                    '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                    '-Itests/host/mqtt', '-I' + build, '-I' + str(pubsub),
+                    'tests/host/mqtt/payload.cpp', str(pubsub / 'PubSubClient.cpp'),
+                    '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Exercise actual Discovery formatting and topic expansion with memory sanitizers.
 with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
     source = (root / 'src/DC1.cpp').read_text()

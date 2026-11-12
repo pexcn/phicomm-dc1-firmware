@@ -10,13 +10,19 @@ void Framework::callback(char *topic, byte *payload, unsigned int length)
 {
     Debug::AddInfo(PSTR("MQTT  Command %s: %.*s"), topic, length, payload);
 
+    // PubSubClient 2.8 shifts the topic over its length field before callback.
+    // Reuse the preceding byte so even a full receive buffer can end in NUL.
+    memmove(topic - 1, topic, payload + length - (byte *)topic);
+    --topic;
+    --payload;
+    payload[length] = 0;
+
     char *cmnd = strrchr(topic, '/');
     if (cmnd == nullptr)
     {
         return;
     }
     cmnd++;
-    payload[length] = 0;
 
     if (strcmp(cmnd, "restart") == 0)
     {
