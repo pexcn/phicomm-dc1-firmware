@@ -41,6 +41,24 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                str(nanopb / 'pb_decode.c'), str(sdk_crc), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Run the network handler with the core's IPv4 parser and HTTP/save spies.
+with tempfile.TemporaryDirectory(prefix='dc1-network-tests-') as build:
+    source = (root / 'lib/esp_framework/src/Http.cpp').read_text()
+    start = source.index('bool argumentFits(')
+    handlers = source[start:source.index('// Bound temporary allocations', start)]
+    start = source.index('void Http::handledhcp()')
+    handlers += source[start:source.index('void Http::handleScanWifi()', start)]
+    source = (root / 'lib/esp_framework/src/Wifi.cpp').read_text()
+    handlers += source[source.index('bool Wifi::isIp('):]
+    source = (core / 'packages/framework-arduinoespressif8266/cores/esp8266/IPAddress.cpp').read_text()
+    start = source.index('bool IPAddress::fromString4(')
+    handlers += source[start:source.index('IPAddress& IPAddress::operator=', start)]
+    (Path(build) / 'network-handler.inc').write_text(handlers)
+    binary = str(Path(build) / 'network')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
+                    'tests/host/network.cpp', '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Exercise the logger and HTTP escaping with the original fixed buffer sizes.
 with tempfile.TemporaryDirectory(prefix='dc1-log-tests-') as build:
     source = (root / 'lib/esp_framework/src/Http.cpp').read_text()

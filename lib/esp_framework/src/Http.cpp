@@ -381,20 +381,23 @@ void Http::handledhcp()
         return;
     }
 
-    bool old = globalConfig.wifi.is_static;
+    const bool restartRequired = globalConfig.wifi.is_static != isStatic
+        || (isStatic && (strcmp(globalConfig.wifi.ip, ip.c_str()) != 0
+            || strcmp(globalConfig.wifi.sn, netmask.c_str()) != 0
+            || strcmp(globalConfig.wifi.gw, gateway.c_str()) != 0));
     globalConfig.wifi.is_static = isStatic;
     strcpy(globalConfig.wifi.ip, ip.c_str());
     strcpy(globalConfig.wifi.sn, netmask.c_str());
     strcpy(globalConfig.wifi.gw, gateway.c_str());
     if (!saveConfigOrError()) return;
 
-    if (old != globalConfig.wifi.is_static)
+    if (restartRequired)
     {
-        server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"设置DHCP信息成功，重启后生效\"}"));
+        server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"网络设置已保存，请在系统维护中重启设备后生效。\"}"));
     }
     else
     {
-        server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"设置DHCP信息成功\"}"));
+        server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"网络设置已保存。\"}"));
     }
 }
 
