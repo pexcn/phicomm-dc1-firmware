@@ -16,6 +16,8 @@ let authBusy = false;
 let activeView = 'overview';
 let online = false;
 let timer = 0;
+let restartTimer = 0;
+let restartCheck = null;
 let polling = false;
 let logIndex = 0;
 let revision = 0;
@@ -333,7 +335,16 @@ async function pollStatus(manual = false) {
   }
 }
 document.addEventListener('visibilitychange', async () => {
-  if (document.hidden || !loggedIn) return;
+  if (document.hidden) {
+    clearTimeout(restartTimer);
+    return;
+  }
+  if (restarting) {
+    clearTimeout(restartTimer);
+    restartCheck?.();
+    return;
+  }
+  if (!loggedIn) return;
   try {
     const { data } = await request('/auth');
     if (!data.authenticated) showLogin(Boolean(data.setup_required), '登录已失效，请重新登录。');
@@ -405,7 +416,15 @@ async function loadConfig() {
       form.dataset.baseline = formData(form).toString();
       dirtyStatus(form);
     });
-    ['#restart', '#factory-reset', '#clear-energy'].forEach((selector) => {
+    [
+      '#restart',
+      '#factory-reset',
+      '#clear-energy',
+      '#initialize-storage',
+      '#recover-relay',
+      '#recover-energy',
+      '#logout'
+    ].forEach((selector) => {
       $(selector).disabled = false;
     });
     $('#load-error').hidden = true;
@@ -444,13 +463,54 @@ function confirmAction(title, description, label = '确认') {
 $('#confirm-cancel').addEventListener('click', () => $('#confirm-dialog').close('cancel'));
 $('#confirm-ok').addEventListener('click', () => $('#confirm-dialog').close('confirm'));
 
+function clearRestartState() {
+  restarting = false;
+  clearTimeout(restartTimer);
+  restartCheck = null;
+}
+
 function markRestarting() {
+  clearRestartState();
   restarting = true;
+  const currentRevision = ++revision;
   clearTimeout(timer);
   setOnline(false);
   $('#status-warning').hidden = false;
-  $('#status-warning').textContent = '设备正在重启，待网络恢复后请刷新页面。';
+  $('#status-warning').textContent = '设备正在重启，恢复连接后将返回登录页。';
   lockControls();
+  let remaining = 20;
+  let checking = false;
+  const check = async () => {
+    if (!restarting || revision !== currentRevision || document.hidden || checking || !remaining)
+      return;
+    checking = true;
+    --remaining;
+    try {
+      const { data } = await request('/auth', {}, 3000);
+      if (
+        restarting &&
+        revision === currentRevision &&
+        data &&
+        Object.hasOwn(data, 'authenticated') &&
+        !data.authenticated
+      )
+        showLogin(Boolean(data.setup_required));
+    } catch {
+      // Connection failures are expected during reboot; keep controls locked.
+    } finally {
+      checking = false;
+      if (restarting && revision === currentRevision) {
+        if (!remaining) {
+          showLogin();
+          $('#login-form fieldset').disabled = true;
+          $('#login-status').textContent = '自动连接未恢复，请检查设备地址后重试。';
+          $('#login-retry').hidden = false;
+        } else if (!document.hidden) restartTimer = setTimeout(check, 2000);
+      }
+    }
+  };
+  restartCheck = check;
+  if (!document.hidden) restartTimer = setTimeout(check, 2000);
 }
 
 function lockControls() {
@@ -734,6 +794,7 @@ function updateFirmwareName() {
 $('#firmware-file').addEventListener('change', updateFirmwareName);
 
 function showLogin(setup = false, message = '') {
+  clearRestartState();
   loggedIn = false;
   setupRequired = setup;
   config = null;
@@ -784,6 +845,7 @@ function showLogin(setup = false, message = '') {
 }
 
 async function enterApp() {
+  clearRestartState();
   loggedIn = true;
   $('#login-form').reset();
   $('#login-screen').hidden = true;
