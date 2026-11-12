@@ -201,8 +201,8 @@ void Rtc::init()
     else
     {
         Debug::AddInfo(PSTR("NTP   Using default servers"));
-        sntp_setservername(0, (char *)"120.25.115.20");
-        sntp_setservername(1, (char *)"203.107.6.88");
+        sntp_setservername(0, (char *)"ntp1.aliyun.com");
+        sntp_setservername(1, (char *)"ntp2.aliyun.com");
         sntp_setservername(2, (char *)"ntp3.aliyun.com");
     }
     sntp_set_timezone(8);
