@@ -544,48 +544,47 @@ void DC1::httpHa(ESP8266WebServer *server)
     String availability = Mqtt::getTeleTopic(F("availability"));
     char cmndTopic[100];
     strcpy(cmndTopic, Mqtt::getCmndTopic(F("power1")).c_str());
-    server->sendContent(F("switch:\r\n"));
+    server->sendContent(F("mqtt:\r\n"));
     for (size_t ch = 0; ch < channels; ch++)
     {
         cmndTopic[strlen(cmndTopic) - 1] = ch + 49;           // 48 + 1 + ch
         powerStatTopic[strlen(powerStatTopic) - 1] = ch + 49; // 48 + 1 + ch
 
         snprintf_P(tmpData, sizeof(tmpData),
-                   PSTR("  - platform: mqtt\r\n"
-                        "    name: \"%s_%d\"\r\n"
-                        "    state_topic: \"%s\"\r\n"
-                        "    command_topic: \"%s\"\r\n"
-                        "    payload_on: \"on\"\r\n"
-                        "    payload_off: \"off\"\r\n"
-                        "    availability_topic: \"%s\"\r\n"
-                        "    payload_available: \"online\"\r\n"
-                        "    payload_not_available: \"offline\"\r\n\r\n"),
-                   UID, ch + 1, powerStatTopic, cmndTopic, availability.c_str());
+                   PSTR("  - switch:\r\n"
+                        "      name: \"%s_%d\"\r\n"
+                        "      state_topic: \"%s\"\r\n"
+                        "      command_topic: \"%s\"\r\n"
+                        "      payload_on: \"on\"\r\n"
+                        "      payload_off: \"off\"\r\n"
+                        "      availability_topic: \"%s\"\r\n"
+                        "      payload_available: \"online\"\r\n"
+                        "      payload_not_available: \"offline\"\r\n\r\n"),
+                   UID, int(ch + 1), powerStatTopic, cmndTopic, availability.c_str());
         server->sendContent_P(tmpData);
     }
 
     String tims[] = {F("voltage"), F("current"), F("power"), F("apparent_power"), F("reactive_power"), F("factor"), F("total"), F("yesterday"), F("today"), F("starttime")};
     String tims2[] = {F("V"), F("A"), F("W"), F("VA"), F("VAr"), F(""), F("kWh"), F("kWh"), F("kWh"), F("")};
-    server->sendContent_P(PSTR("sensor:\r\n"));
     for (size_t i = 0; i < 10; i++)
     {
         if (tims2[i].length() == 0)
         {
             snprintf_P(tmpData, sizeof(tmpData),
-                       PSTR("  - platform: mqtt\r\n"
-                            "    name: \"%s_%s\"\r\n"
-                            "    state_topic: \"%s\"\r\n"
-                            "    value_template: \"{{value_json.%s}}\"\r\n\r\n"),
+                       PSTR("  - sensor:\r\n"
+                            "      name: \"%s_%s\"\r\n"
+                            "      state_topic: \"%s\"\r\n"
+                            "      value_template: \"{{value_json.%s}}\"\r\n\r\n"),
                        UID, tims[i].c_str(), energyTeleTopic, tims[i].c_str());
         }
         else
         {
             snprintf_P(tmpData, sizeof(tmpData),
-                       PSTR("  - platform: mqtt\r\n"
-                            "    name: \"%s_%s\"\r\n"
-                            "    state_topic: \"%s\"\r\n"
-                            "    value_template: \"{{value_json.%s}}\"\r\n"
-                            "    unit_of_measurement: \"%s\"\r\n\r\n"),
+                       PSTR("  - sensor:\r\n"
+                            "      name: \"%s_%s\"\r\n"
+                            "      state_topic: \"%s\"\r\n"
+                            "      value_template: \"{{value_json.%s}}\"\r\n"
+                            "      unit_of_measurement: \"%s\"\r\n\r\n"),
                        UID, tims[i].c_str(), energyTeleTopic, tims[i].c_str(), tims2[i].c_str());
         }
         server->sendContent_P(tmpData);

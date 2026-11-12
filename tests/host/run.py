@@ -117,6 +117,8 @@ with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
     source = (root / 'src/DC1.cpp').read_text()
     start = source.index('void DC1::mqttDiscovery(')
     (Path(build) / 'mqtt-discovery.inc').write_text(source[start:source.index('// Http', start)])
+    start = source.index('void DC1::httpHa(')
+    (Path(build) / 'ha-yaml.inc').write_text(source[start:source.index('void DC1::logoLed()', start)])
     source = (root / 'lib/esp_framework/src/Mqtt.cpp').read_text()
     start = source.index('String Mqtt::getCmndTopic(')
     helpers = source[start:source.index('void Mqtt::mqttSetLoopCallback(', start)]
@@ -129,10 +131,12 @@ with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
                     '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
                     'tests/host/mqtt/discovery.cpp', '-o', binary], cwd=root, check=True)
     result = subprocess.check_output([binary], text=True)
+    entities = {}
     for line in result.splitlines():
         if line.startswith('PACKET\t'):
             _, topic, payload = line.split('\t', 2)
             data = json.loads(payload)
+            entities[data['name']] = data
             assert data['name'] == topic.rsplit('/', 2)[1]
             assert data['stat_t']
             if '/switch/' in topic:
@@ -140,6 +144,30 @@ with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
                 assert data['pl_on'] == 'on' and data['pl_off'] == 'off'
             else:
                 assert data['val_tpl'].startswith('{{value_json.')
+        elif line.startswith('YAML\t'):
+            lines = bytes.fromhex(line.split('\t')[1]).decode().split('\r\n')
+            assert lines.pop(0) == 'mqtt:'
+            exported = []
+            for entry in filter(None, lines):
+                if entry in ('  - switch:', '  - sensor:'):
+                    exported.append({'platform': entry.strip(' :-')})
+                else:
+                    match = re.fullmatch(r'      ([a-z_]+): ("[^"\r\n]*")', entry)
+                    assert match, entry
+                    exported[-1][match[1]] = json.loads(match[2])
+            assert len(exported) == len(entities) == 14
+            assert sum(e['platform'] == 'switch' for e in exported) == 4
+            for entry in exported:
+                discovery = entities[entry['name']]
+                fields = {'state_topic': 'stat_t', 'command_topic': 'cmd_t',
+                          'availability_topic': 'avty_t', 'payload_on': 'pl_on',
+                          'payload_off': 'pl_off', 'payload_available': 'pl_avail',
+                          'payload_not_available': 'pl_not_avail',
+                          'value_template': 'val_tpl', 'unit_of_measurement': 'unit_of_meas'}
+                assert {k: v for k, v in entry.items() if k not in ('platform', 'name')} == {
+                    key: discovery[value] for key, value in fields.items() if value in discovery}
+            entities.clear()
+            print('PASS: modern HA MQTT YAML preserves all 4 switches and 10 sensors, topics, templates and units')
         else:
             print(line)
 # Feed physical 4800-baud 8E1 edges through the installed serial library and meter.

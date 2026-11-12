@@ -42,6 +42,17 @@ static unsigned errors;
 struct Packet { std::string topic, message; bool retained; };
 static std::vector<Packet> packets;
 static unsigned availabilityReports, powerReports, energyReports;
+static char tmpData[512];
+#define CONTENT_LENGTH_UNKNOWN -1
+struct ESP8266WebServer {
+    std::string content;
+    void setContentLength(int) {}
+    void sendHeader(const char *, const char *) {}
+    void send_P(int, const char *, const char *) {}
+    void sendContent(const String &text) { content += text; }
+    void sendContent_P(const char *text) { content += text; }
+};
+struct Http { static bool checkAuth() { return true; } };
 struct Debug {
     static void AddError(const char *, ...) { ++errors; }
 };
@@ -65,14 +76,17 @@ struct Mqtt {
 class DC1 {
 public:
     char powerStatTopic[100];
+    char energyTeleTopic[100];
     uint8_t channels = 4;
     void mqttDiscovery(bool isEnable);
+    void httpHa(ESP8266WebServer *server);
     void reportPower() { ++powerReports; }
     void reportEnergy() { ++energyReports; }
 };
 
 #include "mqtt-topic.inc"
 #include "mqtt-discovery.inc"
+#include "ha-yaml.inc"
 
 static void resetSpies()
 {
@@ -117,6 +131,12 @@ static void testConfiguration(const char *uid, const char *prefix, const char *f
     assert(availabilityReports == 0 && powerReports == 0 && energyReports == 0);
     for (unsigned i = 0; i < packets.size(); ++i)
         assert(packets[i].topic == enabled[i].topic && packets[i].message.empty() && packets[i].retained);
+    strcpy(dc.energyTeleTopic, Mqtt::getTeleTopic("energy").c_str());
+    ESP8266WebServer server;
+    dc.httpHa(&server);
+    printf("YAML\t");
+    for (unsigned char value : server.content) printf("%02x", value);
+    puts("");
 }
 
 int main()
