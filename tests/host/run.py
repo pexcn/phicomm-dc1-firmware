@@ -59,6 +59,20 @@ with tempfile.TemporaryDirectory(prefix='dc1-network-tests-') as build:
                     '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
                     'tests/host/network.cpp', '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
+# Exercise Wi-Fi portal lifetime with DNS/socket allocation and save spies.
+with tempfile.TemporaryDirectory(prefix='dc1-wifi-tests-') as build:
+    source = (root / 'lib/esp_framework/src/Wifi.cpp').read_text()
+    start = source.index('WiFiClient Wifi::wifiClient;')
+    portal = source[start:source.index('void Wifi::connectWifi()', start)]
+    start = source.index('void Wifi::setupWifiManager(')
+    portal += source[start:source.index('bool Wifi::isIp(', start)]
+    (Path(build) / 'wifi-portal.inc').write_text(portal)
+    binary = str(Path(build) / 'wifi')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
+                    '-Wno-unused-parameter',  # SDK event argument is intentionally unused.
+                    'tests/host/wifi.cpp', '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
 # Exercise the logger and HTTP escaping with the original fixed buffer sizes.
 with tempfile.TemporaryDirectory(prefix='dc1-log-tests-') as build:
     source = (root / 'lib/esp_framework/src/Http.cpp').read_text()

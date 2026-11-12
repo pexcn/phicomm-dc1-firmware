@@ -16,7 +16,7 @@ unsigned long Wifi::connectStart = 0;
 bool Wifi::connect = false;
 String Wifi::_ssid = "";
 String Wifi::_pass = "";
-DNSServer *Wifi::dnsServer;
+DNSServer *Wifi::dnsServer = nullptr;
 
 void Wifi::connectWifi()
 {
@@ -96,7 +96,8 @@ void Wifi::setupWifiManager(bool resetSettings)
     delay(500);
     Debug::AddInfo(PSTR("WIFI  Setup hotspot ip=%s"), WiFi.softAPIP().toString().c_str());
 
-    dnsServer = new DNSServer();
+    if (!dnsServer) dnsServer = new DNSServer();
+    else dnsServer->stop();
     dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
     dnsServer->start(53, "*", WiFi.softAPIP());
 }
