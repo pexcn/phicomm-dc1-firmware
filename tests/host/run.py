@@ -9,11 +9,33 @@ import re
 import struct
 import gzip
 import json
+from html.parser import HTMLParser
 
 root = Path(__file__).resolve().parents[2]
 nanopb = root / '.pio/libdeps/dc1/Nanopb'
 if not nanopb.is_dir():
     raise SystemExit('Install the firmware dependencies first: pio run')
+# Keep MQTT form limits aligned with the actual generated firmware buffers.
+class InputLimits(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.limits = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'input' and 'name' in attrs and 'maxlength' in attrs:
+            self.limits[attrs['name']] = int(attrs['maxlength'])
+
+inputs = InputLimits()
+inputs.feed((root / 'web/index.html').read_text())
+schema = (root / 'lib/esp_framework/include/GlobalConfig.pb.h').read_text()
+mqtt = schema.split('typedef struct _MqttConfigMessage {', 1)[1].split('}', 1)[0]
+for name, field in [('mqtt_server', 'server'), ('mqtt_username', 'user'),
+                    ('mqtt_password', 'pass'), ('mqtt_topic', 'topic'),
+                    ('discovery_prefix', 'discovery_prefix')]:
+    capacity = int(re.search(r'char ' + field + r'\[(\d+)\]', mqtt).group(1))
+    assert inputs.limits[name] == capacity - 1, name + ' must reserve the NUL byte'
+print('PASS: MQTT form limits match firmware string capacities')
 with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
     binary = str(Path(build) / 'persistence')
     core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
