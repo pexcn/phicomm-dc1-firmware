@@ -86,6 +86,90 @@ public:
     bool overflow() { return serial->overflow(); }
 };
 
+#define PSTR(text) text
+#define bitRead(value, bit) (((value) >> (bit)) & 1)
+struct Debug {
+    static void AddError(const char *, ...) {}
+    static void AddInfo(const char *, ...) {}
+};
+class DC1 {
+public:
+    CSE7766 *cse7766;
+    struct { uint16_t energy_max_power = 2500; } config;
+    uint8_t channels = 4, lastState = 11, lastState2 = 0;
+    unsigned enabled = 0, disabled = 0;
+    explicit DC1(CSE7766 &meter) : cse7766(&meter) {}
+    void energyMaxPower();
+    void switchRelay(uint8_t channel, bool on, bool save)
+    {
+        assert(channel < channels && !save);
+        if (on) { lastState |= 1U << channel; ++enabled; }
+        else { lastState &= ~(1U << channel); ++disabled; }
+    }
+};
+#include "overload-handler.inc"
+
+static void testOverloadRetry(Meter &meter)
+{
+    DC1 dc(meter);
+    auto tick = [&](const Frame *sample) {
+        if (sample) { transmit(*sample); meter.loop(); }
+        meter.everySecond();
+        dc.energyMaxPower();
+    };
+    // Losing the meter alone must not disconnect normally powered outlets.
+    meter.Energy.data_valid = ENERGY_WATCHDOG;
+    tick(nullptr);
+    assert(dc.lastState == 11 && dc.enabled == 0 && dc.disabled == 0);
+
+    const Frame high = frame(1666); // About 3001 W, above the 2500 W limit.
+    Frame zero = frame();
+    zero[0] = 0xF2; // A valid no-load frame, unlike a watchdog-generated zero.
+    checksum(zero);
+    Frame corrupt = zero;
+    corrupt[23] ^= 1;
+    for (unsigned attempt = 0; attempt <= MAX_POWER_RETRY; ++attempt)
+    {
+        for (unsigned second = 0; second <= MAX_POWER_HOLD; ++second) tick(&high);
+        assert(dc.lastState == 0 && dc.lastState2 == 11);
+        assert(meter.Energy.active_power > dc.config.energy_max_power);
+        const auto wait = meter.Energy.mplw_counter;
+        const auto retries = meter.Energy.mplr_counter;
+        assert(wait > 0 && retries == MAX_POWER_RETRY + 1 - attempt);
+        const unsigned enabled = dc.enabled;
+
+        // Timeouts clear watts to zero; bad checksums must not allow resumption.
+        meter.Energy.data_valid = ENERGY_WATCHDOG;
+        for (unsigned second = 0; second < 2 * MAX_POWER_WINDOW; ++second) tick(&corrupt);
+        assert(meter.Energy.data_valid > ENERGY_WATCHDOG && meter.Energy.active_power == 0);
+        assert(dc.lastState == 0 && dc.enabled == enabled);
+        assert(meter.Energy.mplw_counter == wait && meter.Energy.mplr_counter == retries);
+
+        // Fresh zero watts is valid. The remaining cooldown resumes, not resets.
+        while (meter.Energy.mplw_counter) tick(&zero);
+        assert(dc.lastState == 0 && dc.enabled == enabled);
+        assert(meter.Energy.mplr_counter == retries);
+        meter.Energy.data_valid = ENERGY_WATCHDOG;
+        for (unsigned second = 0; second < MAX_POWER_WINDOW; ++second) tick(nullptr);
+        assert(dc.lastState == 0 && dc.enabled == enabled);
+        assert(meter.Energy.mplr_counter == retries && meter.Energy.mplw_counter == 0);
+
+        // The documented watchdog boundary is still valid for a retry.
+        transmit(zero);
+        meter.loop();
+        meter.Energy.data_valid = ENERGY_WATCHDOG;
+        dc.energyMaxPower();
+        assert(meter.Energy.mplr_counter == retries - 1);
+        if (attempt < MAX_POWER_RETRY)
+            assert(dc.lastState == 11 && dc.enabled == enabled + 3);
+        else
+            assert(dc.lastState == 0 && dc.enabled == enabled);
+    }
+    for (unsigned second = 0; second < 2 * MAX_POWER_WINDOW; ++second) tick(&zero);
+    assert(dc.lastState == 0 && dc.enabled == 3 * MAX_POWER_RETRY);
+    puts("PASS: actual overload handler pauses retries/cooldown on meter timeout, resumes on valid data, retains retry limits and leaves normal outputs unchanged");
+}
+
 int main()
 {
     // Negative control: the pre-fix configuration loses the even-parity
@@ -163,4 +247,5 @@ int main()
     assert(meter.everySecond());
     assert(meter.Energy.kWhtoday_delta == 5000 / 36);
     puts("PASS: checksum rejection, truncated-frame resync, watchdog timeout/recovery and CF pulses; totals preserved");
+    testOverloadRetry(meter);
 }

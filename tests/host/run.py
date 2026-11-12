@@ -109,12 +109,16 @@ with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
             print(line)
 # Feed physical 4800-baud 8E1 edges through the installed serial library and meter.
 with tempfile.TemporaryDirectory(prefix='dc1-meter-tests-') as build:
+    source = (root / 'src/DC1.cpp').read_text()
+    start = source.index('void DC1::energyMaxPower()')
+    end = source.index('void DC1::energyShow(', start)
+    (Path(build) / 'overload-handler.inc').write_text(source[start:end])
     binary = str(Path(build) / 'meter')
     serial = root / '.pio/libdeps/dc1/EspSoftwareSerial/src'
     ghostl = root / '.pio/libdeps/dc1/ghostl/src'
     subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                     # The dependency's unused TX path assumes a 32-bit unsigned long.
-                    '-Wno-overflow', '-Itests/host/meter', '-Iinclude',
+                    '-Wno-overflow', '-Itests/host/meter', '-Iinclude', '-I' + build,
                     '-I' + str(serial), '-I' + str(ghostl),
                     'tests/host/meter/meter.cpp', 'src/CSE7766.cpp',
                     str(serial / 'SoftwareSerial.cpp'), '-o', binary], cwd=root, check=True)

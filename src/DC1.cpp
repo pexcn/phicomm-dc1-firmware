@@ -977,7 +977,8 @@ void DC1::energyMaxPower()
             cse7766->Energy.mplr_counter = 0;
         }
     }
-    if (!lastState)
+    // A timed-out meter reports zero watts; pause retries until data is valid.
+    if (!lastState && cse7766->Energy.data_valid <= ENERGY_WATCHDOG)
     {
         if (cse7766->Energy.mplw_counter)
         {
