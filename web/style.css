@@ -30,11 +30,6 @@
     'Noto Sans CJK SC',
     sans-serif;
 }
-:root[data-page='settings'],
-:root[data-page='network'],
-:root[data-page='system'] {
-  --page-width: 1120px;
-}
 :root[data-theme='dark'] {
   color-scheme: dark;
   --bg: #141d2b;
