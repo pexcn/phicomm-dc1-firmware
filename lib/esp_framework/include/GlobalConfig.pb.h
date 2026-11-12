@@ -14,9 +14,9 @@ typedef struct _WifiConfigMessage {
     char ssid[20];
     char pass[30];
     bool is_static;
-    char ip[15];
-    char sn[15];
-    char gw[15];
+    char ip[16];
+    char sn[16];
+    char gw[16];
     char ntp[40];
 } WifiConfigMessage;
 
@@ -167,10 +167,10 @@ extern const pb_msgdesc_t DebugConfigMessage_msg;
 /* Maximum encoded size of messages (where known) */
 #define DebugConfigMessage_size                  3
 #define GLOBALCONFIG_PB_H_MAX_SIZE               GlobalConfigMessage_size
-#define GlobalConfigMessage_size                 970
+#define GlobalConfigMessage_size                 973
 #define HttpConfigMessage_size                   105
 #define MqttConfigMessage_size                   177
-#define WifiConfigMessage_size                   143
+#define WifiConfigMessage_size                   146
 
 #ifdef __cplusplus
 } /* extern "C" */

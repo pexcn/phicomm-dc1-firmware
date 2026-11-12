@@ -190,9 +190,10 @@ static void testRetiredConfigFields()
     auto fill = [](char *value, size_t size) { memset(value, 'x', size - 1); };
     fill(globalConfig.wifi.ssid, sizeof(globalConfig.wifi.ssid));
     fill(globalConfig.wifi.pass, sizeof(globalConfig.wifi.pass));
-    fill(globalConfig.wifi.ip, sizeof(globalConfig.wifi.ip));
-    fill(globalConfig.wifi.sn, sizeof(globalConfig.wifi.sn));
-    fill(globalConfig.wifi.gw, sizeof(globalConfig.wifi.gw));
+    // The older schema allocated 15 bytes per IPv4 string, including NUL.
+    fill(globalConfig.wifi.ip, 15);
+    fill(globalConfig.wifi.sn, 15);
+    fill(globalConfig.wifi.gw, 15);
     fill(globalConfig.wifi.ntp, sizeof(globalConfig.wifi.ntp));
     fill(globalConfig.mqtt.server, sizeof(globalConfig.mqtt.server));
     fill(globalConfig.mqtt.user, sizeof(globalConfig.mqtt.user));
@@ -259,6 +260,59 @@ static void storeLegacyConfig()
         uint8_t(crc >> 8), uint8_t(crc)};
     memcpy(flash.data() + CONFIG, header, sizeof(header));
     memcpy(flash.data() + CONFIG + 6, payload, len);
+}
+
+static void testIPv4Storage()
+{
+    assert(sizeof(globalConfig.wifi.ip) == 16);
+    assert(sizeof(globalConfig.wifi.sn) == 16);
+    assert(sizeof(globalConfig.wifi.gw) == 16);
+    flash.fill(0xff);
+    Config::resetConfig();
+    strcpy(globalConfig.wifi.ssid, "home-network");
+    strcpy(globalConfig.wifi.pass, "wifi-password");
+    strcpy(globalConfig.wifi.ip, "192.168.10.100");
+    strcpy(globalConfig.wifi.sn, "255.255.255.0");
+    strcpy(globalConfig.wifi.gw, "192.168.10.1");
+    strcpy(globalConfig.mqtt.server, "192.168.10.10");
+    strcpy(globalConfig.http.pass, "saved-password-record");
+    globalConfig.wifi.is_static = true;
+    globalConfig.module_cfg.size = 4;
+    memcpy(globalConfig.module_cfg.bytes, "\x08\x0b\x20\x02", 4);
+    auto expected = globalConfig;
+    storeLegacyConfig();
+    memset(&globalConfig, 0, sizeof(globalConfig));
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &expected, sizeof(expected)) == 0);
+
+    strcpy(globalConfig.wifi.ip, "192.168.100.200");
+    strcpy(globalConfig.wifi.sn, "255.255.255.128");
+    strcpy(globalConfig.wifi.gw, "192.168.100.129");
+    expected = globalConfig;
+    assert(Config::saveConfig(false));
+    memset(&globalConfig, 0, sizeof(globalConfig));
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &expected, sizeof(expected)) == 0);
+
+    strcpy(globalConfig.wifi.sn, "255.255.255.255");
+    expected = globalConfig;
+    assert(Config::saveConfig(false));
+    memset(&globalConfig, 0, sizeof(globalConfig));
+    Config::readConfig();
+    assert(memcmp(&globalConfig, &expected, sizeof(expected)) == 0);
+    unsigned before = configErases();
+    assert(Config::saveConfig(false));
+    assert(configErases() == before);
+
+    uint8_t overlong[] = "\x22\x10" "192.168.100.2000";
+    for (unsigned tag = 4; tag <= 6; ++tag)
+    {
+        overlong[0] = uint8_t((tag << 3) | PB_WT_STRING);
+        WifiConfigMessage decoded = {};
+        auto stream = pb_istream_from_buffer(overlong, sizeof(overlong) - 1);
+        assert(!pb_decode(&stream, WifiConfigMessage_fields, &decoded));
+    }
+    puts("PASS: full-length IPv4 fields, /32 mask, legacy configuration and unrelated settings survive save/reload");
 }
 
 static void checkConfigurationCuts(const char *name, const GlobalConfigMessage &updated)
@@ -560,6 +614,7 @@ int main()
     testRestartPreparation();
     testPasswordRecovery();
     testRetiredConfigFields();
+    testIPv4Storage();
     testConfigurationPowerCuts();
     testRuntimeStorage();
     testCorruptRecordRecovery();
