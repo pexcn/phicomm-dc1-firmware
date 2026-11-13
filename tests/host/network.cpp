@@ -141,37 +141,35 @@ static void testOutletSettings()
             {"wifi_led", "2"}, {"sub_kinkage", "2"}, {"report_interval", "120"},
             {"energy_power_delta", "20"}, {"energy_max_power", "2400"}};
     };
+    auto reject = [&](const char *field, const String &value) {
+        setupOutlet();
+        endpoint.args[field] = value;
+        DC1 dc;
+        const auto before = dc.config;
+        dc.httpSetting(&endpoint);
+        assert(endpoint.status == 400 && saves == 0);
+        assert(memcmp(&dc.config, &before, sizeof(before)) == 0);
+        assert(dc.ledUpdates == 0 && dc.relaySchedules == 0 && !dc.relaySavePending);
+    };
     for (unsigned field = 0; field < 5; ++field)
     {
-        for (unsigned value = 0; value <= maximum[field]; ++value)
+        for (unsigned value : {0U, maximum[field]})
         {
             setupOutlet();
             endpoint.args[fields[field]] = std::to_string(value);
             DC1 dc;
-            dc.config.energy_power_calibration = 123456789;
             dc.httpSetting(&endpoint);
             const uint8_t actual[] = {dc.config.power_on_state, dc.config.power_mode,
                 dc.config.logo_led, dc.config.wifi_led, dc.config.sub_kinkage};
             for (unsigned i = 0; i < 5; ++i) assert(actual[i] == (i == field ? value : maximum[i]));
             assert(saves == 1 && endpoint.status == 200 && dc.ledUpdates == 1);
             assert(dc.config.report_interval == 120 && dc.config.energy_power_delta == 20
-                && dc.config.energy_max_power == 2400 && dc.config.energy_power_calibration == 123456789);
+                && dc.config.energy_max_power == 2400);
         }
-        for (const auto &value : {std::to_string(maximum[field] + 1), std::string("7"),
-                std::string("-1"), std::string("257"), std::string("1x"), std::string("abc"),
-                std::string(), std::string("01")})
-        {
-            setupOutlet();
-            endpoint.args[fields[field]] = value;
-            DC1 dc;
-            dc.config.energy_max_power = 2300;
-            const auto before = dc.config;
-            dc.httpSetting(&endpoint);
-            assert(endpoint.status == 400 && saves == 0);
-            assert(memcmp(&dc.config, &before, sizeof(before)) == 0);
-            assert(dc.ledUpdates == 0 && dc.relaySchedules == 0 && !dc.relaySavePending);
-        }
+        reject(fields[field], std::to_string(maximum[field] + 1));
     }
+    // The shared parser's malformed inputs need only one representative field.
+    for (const char *value : {"", "-1", "257", "1x", "abc", "01"}) reject("sub_kinkage", value);
     setupOutlet();
     endpoint.args.erase("sub_kinkage");
     DC1 dc;

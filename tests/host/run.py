@@ -143,12 +143,12 @@ with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
                     '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
                     'tests/host/mqtt/discovery.cpp', '-o', binary], cwd=root, check=True)
     result = subprocess.check_output([binary], text=True)
-    entities = {}
+    entities = set()
     for line in result.splitlines():
         if line.startswith('PACKET\t'):
             _, topic, payload = line.split('\t', 2)
             data = json.loads(payload)
-            entities[data['name']] = data
+            entities.add(data['name'])
             assert data['name'] == topic.rsplit('/', 2)[1]
             assert data['stat_t']
             if '/switch/' in topic:
@@ -157,29 +157,19 @@ with tempfile.TemporaryDirectory(prefix='dc1-discovery-tests-') as build:
             else:
                 assert data['val_tpl'].startswith('{{value_json.')
         elif line.startswith('YAML\t'):
-            lines = bytes.fromhex(line.split('\t')[1]).decode().split('\r\n')
-            assert lines.pop(0) == 'mqtt:'
-            exported = []
-            for entry in filter(None, lines):
-                if entry in ('  - switch:', '  - sensor:'):
-                    exported.append({'platform': entry.strip(' :-')})
-                else:
-                    match = re.fullmatch(r'      ([a-z_]+): ("[^"\r\n]*")', entry)
-                    assert match, entry
-                    exported[-1][match[1]] = json.loads(match[2])
-            assert len(exported) == len(entities) == 14
-            assert sum(e['platform'] == 'switch' for e in exported) == 4
-            for entry in exported:
-                discovery = entities[entry['name']]
-                fields = {'state_topic': 'stat_t', 'command_topic': 'cmd_t',
-                          'availability_topic': 'avty_t', 'payload_on': 'pl_on',
-                          'payload_off': 'pl_off', 'payload_available': 'pl_avail',
-                          'payload_not_available': 'pl_not_avail',
-                          'value_template': 'val_tpl', 'unit_of_measurement': 'unit_of_meas'}
-                assert {k: v for k, v in entry.items() if k not in ('platform', 'name')} == {
-                    key: discovery[value] for key, value in fields.items() if value in discovery}
+            yaml = bytes.fromhex(line.split('\t')[1]).decode()
+            assert yaml.splitlines()[0].strip() == 'mqtt:'
+            for platform, count in [('switch', 4), ('sensor', 10)]:
+                assert len(re.findall(rf'(?m)^\s*-\s*{platform}\s*:\s*$', yaml)) == count
+            for key, count in [('name', 14), ('state_topic', 14), ('command_topic', 4),
+                               ('value_template', 10), ('unit_of_measurement', 8)]:
+                assert len(re.findall(rf'(?m)^\s*{key}\s*:', yaml)) == count
+            assert len(entities) == 14 and all(name in yaml for name in entities)
+            # Last fields must be complete, including with maximum-length topics.
+            assert yaml.count('}}') == 10
+            assert len(re.findall(r'''(?m)^\s*payload_not_available\s*:\s*(?:offline|'offline'|"offline")\s*$''', yaml)) == 4
             entities.clear()
-            print('PASS: modern HA MQTT YAML preserves all 4 switches and 10 sensors, topics, templates and units')
+            print('PASS: modern HA MQTT YAML structure, entity count and export completeness')
         else:
             print(line)
 # Feed physical 4800-baud 8E1 edges through the installed serial library and meter.

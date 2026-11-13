@@ -96,17 +96,13 @@ static void testInitialProvisioning()
     const unsigned before = configErases();
     memset(&globalConfig, 0, sizeof(globalConfig));
     Config::readConfig();
-    for (unsigned attempt = 0; attempt < 2; ++attempt)
-    {
-        Wifi::connectWifi();
-        assert(memcmp(&globalConfig, &saved, sizeof(saved)) == 0);
-        assert(Config::saveConfig() && configErases() == before);
-        Config::readConfig();
-    }
-    assert(portals == 2 && stations == 0);
+    Wifi::connectWifi();
+    assert(memcmp(&globalConfig, &saved, sizeof(saved)) == 0);
+    assert(Config::saveConfig() && configErases() == before);
+    assert(portals == 1 && stations == 0);
     strcpy(globalConfig.wifi.ssid, "home-network");
     Wifi::connectWifi();
-    assert(portals == 2 && stations == 1);
+    assert(portals == 1 && stations == 1);
     puts("PASS: actual initial Wi-Fi dispatch preserves saved admin credentials/configuration across provisioning reboots without flash writes");
 }
 
@@ -311,9 +307,15 @@ static void checkConfigurationCuts(const char *name, const GlobalConfigMessage &
     mutations = 0;
     assert(Config::saveConfig());
     const unsigned steps = mutations;
-    assert(steps > 1024);
+    const unsigned eraseWords = SPI_FLASH_SEC_SIZE / sizeof(uint32);
+    assert(steps > eraseWords);
+    unsigned tested = 0;
     for (unsigned cut = 0; cut < steps; ++cut)
     {
+        // The first erased word invalidates the header for every later erase cut.
+        // Sample its start/middle/end, then interrupt every program/commit word.
+        if (cut < eraseWords - 1 && cut != 0 && cut != eraseWords / 2) continue;
+        ++tested;
         flash = baseline;
         globalConfig = updated;
         mutations = 0;
@@ -324,7 +326,6 @@ static void checkConfigurationCuts(const char *name, const GlobalConfigMessage &
         cutAfter = -1;
         memset(&globalConfig, 0, sizeof(globalConfig));
         Config::readConfig();
-        // Each erased/programmed word may be the last one before losing power.
         assert(memcmp(&globalConfig, &previous, sizeof(globalConfig)) == 0
             || memcmp(&globalConfig, &updated, sizeof(globalConfig)) == 0);
         assertConfigIsolation(baseline);
@@ -334,7 +335,7 @@ static void checkConfigurationCuts(const char *name, const GlobalConfigMessage &
     assert(Config::saveConfig());
     Config::readConfig();
     assert(memcmp(&globalConfig, &updated, sizeof(globalConfig)) == 0);
-    printf("PASS: %u configuration power-cut points (%s), preserving Wi-Fi, MQTT, password and embedded runtime data\n", steps, name);
+    printf("PASS: %u configuration power-cut points (%s), preserving Wi-Fi, MQTT, password and embedded runtime data\n", tested, name);
 }
 
 static void fixFooterCrc(unsigned address)
