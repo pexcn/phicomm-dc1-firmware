@@ -18,6 +18,8 @@
   --danger-bg: #fff0ed;
   --warning: #865b16;
   --warning-bg: #fff7e7;
+  --success: #24694e;
+  --success-bg: #e7f1eb;
   --shadow: 0 12px 36px #142b1d0c;
   --page-width: 1360px;
   --sidebar-width: 232px;
@@ -50,6 +52,8 @@
   --danger-bg: #432d36;
   --warning: #edc780;
   --warning-bg: #3b342a;
+  --success: #a0d8b1;
+  --success-bg: #203b32;
   --shadow: 0 12px 36px #0002;
 }
 *,
@@ -773,8 +777,10 @@ input[type='checkbox']:checked::before {
   flex: 1;
   min-width: 150px;
 }
+form[data-settings] .form-actions {
+  justify-content: flex-end;
+}
 .save-bar {
-  justify-content: space-between;
   padding: 14px 18px;
   margin-top: 0;
   border: 1px solid var(--border);
@@ -788,7 +794,41 @@ input[type='checkbox']:checked::before {
   margin-top: 16px;
 }
 .save-status {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.save-status[data-state='dirty'] {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: var(--warning);
+  font-weight: 600;
+}
+.save-status[data-state='dirty']::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.save-status[data-state='saved'] {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success);
+  font-weight: 600;
+}
+.save-status[data-state='saved']::before {
+  content: '✓';
+}
+.save-status:not([data-state='dirty']) ~ button[type='submit'] {
+  background: var(--soft);
   color: var(--muted);
 }
 .check {

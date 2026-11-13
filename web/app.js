@@ -368,11 +368,18 @@ $('#log-clear').addEventListener('click', () => {
 function formData(form) {
   return new URLSearchParams(new FormData(form));
 }
-function dirtyStatus(form) {
+function dirtyStatus(form, saved = false) {
   const status = $('.save-status', form);
-  if (status)
-    status.textContent =
-      form.dataset.baseline === formData(form).toString() ? '无未保存的更改' : '有未保存的更改';
+  if (!status) return;
+  clearTimeout(status.saveTimer);
+  const dirty = form.dataset.baseline !== formData(form).toString();
+  status.dataset.state = dirty ? 'dirty' : saved ? 'saved' : 'clean';
+  status.textContent = dirty ? '有未保存的更改' : saved ? '已保存' : '无未保存的更改';
+  if (saved && !dirty)
+    status.saveTimer = setTimeout(() => {
+      status.dataset.state = 'clean';
+      status.textContent = '无未保存的更改';
+    }, 2500);
 }
 
 function configureFeatures(features) {
@@ -555,7 +562,7 @@ $$('form[data-settings]').forEach((form) => {
       revision++;
       if (result.data) renderStatus(result.data);
       form.dataset.baseline = submitted;
-      dirtyStatus(form);
+      dirtyStatus(form, true);
       toast(result.msg || '设置已保存。');
       if (form.id === 'module-form' && data.get('uid') !== config.fields.uid) markRestarting();
       else schedulePoll(0);
