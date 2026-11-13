@@ -112,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='dc1-payload-tests-') as build:
     pubsub = root / '.pio/libdeps/dc1/PubSubClient/src'
     binary = str(Path(build) / 'payload')
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                    '-Wno-sign-compare', '-DMQTT_MAX_PACKET_SIZE=768',
+                    '-DMQTT_MAX_PACKET_SIZE=768',
                     '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                     '-Itests/host/mqtt', '-I' + build, '-I' + str(pubsub),
                     'tests/host/mqtt/payload.cpp', str(pubsub / 'PubSubClient.cpp'),
