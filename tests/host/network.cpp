@@ -6,9 +6,12 @@
 #include <map>
 #include <string>
 #include "GlobalConfig.pb.h"
+#include "DC1Config.pb.h"
 
 #define F(text) text
 #define PSTR(text) text
+#define CONTENT_LENGTH_UNKNOWN -1
+using __FlashStringHelper = char;
 class String : public std::string {
 public:
     using std::string::string;
@@ -43,11 +46,15 @@ struct Server {
     String host;
     Client connection;
     String arg(const char *name) { return args[name]; }
+    bool hasArg(const char *name) const { return args.count(name) != 0; }
     const String &hostHeader() const { return host; }
     Client &client() { return connection; }
     void sendHeader(const char *, const String &, bool) {}
     void send(int code, const char *type, const char *payload) { send_P(code, type, payload); }
     void send_P(int code, const char *, const char *payload) { status = code; response = payload; }
+    void setContentLength(int) {}
+    void sendContent(const String &text) { response += text; }
+    void sendContent_P(const char *text) { response += text; }
 };
 static GlobalConfigMessage globalConfig;
 static Server endpoint;
@@ -81,7 +88,19 @@ struct Http {
 };
 Server *Http::server = &endpoint;
 struct Wifi { static bool isIp(const String &str); };
+using ESP8266WebServer = Server;
+struct DC1 {
+    DC1ConfigMessage config = {};
+    bool relaySavePending = false, runtimeMigrationPending = false;
+    unsigned ledUpdates = 0, relaySchedules = 0, energyClears = 0;
+    void logoLed() { ++ledUpdates; }
+    void scheduleRelaySave() { ++relaySchedules; relaySavePending = true; }
+    bool energyClear() { ++energyClears; return true; }
+    String httpGetStatus(Server *) { return ""; }
+    void httpSetting(ESP8266WebServer *server);
+};
 #include "network-handler.inc"
+#include "outlet-settings.inc"
 
 static void setup(bool isStatic = true)
 {
@@ -112,8 +131,64 @@ static void submit()
     assert(strcmp(globalConfig.mqtt.server, "mqtt.lan") == 0);
 }
 
+static void testOutletSettings()
+{
+    const char *fields[] = {"power_on_state", "power_mode", "logo_led", "wifi_led", "sub_kinkage"};
+    const unsigned maximum[] = {3, 1, 3, 2, 2};
+    auto setupOutlet = [] {
+        setup();
+        endpoint.args = {{"power_on_state", "3"}, {"power_mode", "1"}, {"logo_led", "3"},
+            {"wifi_led", "2"}, {"sub_kinkage", "2"}, {"report_interval", "120"},
+            {"energy_power_delta", "20"}, {"energy_max_power", "2400"}};
+    };
+    for (unsigned field = 0; field < 5; ++field)
+    {
+        for (unsigned value = 0; value <= maximum[field]; ++value)
+        {
+            setupOutlet();
+            endpoint.args[fields[field]] = std::to_string(value);
+            DC1 dc;
+            dc.config.energy_power_calibration = 123456789;
+            dc.httpSetting(&endpoint);
+            const uint8_t actual[] = {dc.config.power_on_state, dc.config.power_mode,
+                dc.config.logo_led, dc.config.wifi_led, dc.config.sub_kinkage};
+            for (unsigned i = 0; i < 5; ++i) assert(actual[i] == (i == field ? value : maximum[i]));
+            assert(saves == 1 && endpoint.status == 200 && dc.ledUpdates == 1);
+            assert(dc.config.report_interval == 120 && dc.config.energy_power_delta == 20
+                && dc.config.energy_max_power == 2400 && dc.config.energy_power_calibration == 123456789);
+        }
+        for (const auto &value : {std::to_string(maximum[field] + 1), std::string("7"),
+                std::string("-1"), std::string("257"), std::string("1x"), std::string("abc"),
+                std::string(), std::string("01")})
+        {
+            setupOutlet();
+            endpoint.args[fields[field]] = value;
+            DC1 dc;
+            dc.config.energy_max_power = 2300;
+            const auto before = dc.config;
+            dc.httpSetting(&endpoint);
+            assert(endpoint.status == 400 && saves == 0);
+            assert(memcmp(&dc.config, &before, sizeof(before)) == 0);
+            assert(dc.ledUpdates == 0 && dc.relaySchedules == 0 && !dc.relaySavePending);
+        }
+    }
+    setupOutlet();
+    endpoint.args.erase("sub_kinkage");
+    DC1 dc;
+    dc.httpSetting(&endpoint);
+    assert(endpoint.status == 400 && saves == 0 && dc.ledUpdates == 0);
+    setupOutlet(); authorized = false;
+    dc.httpSetting(&endpoint);
+    assert(endpoint.status == 401 && saves == 0);
+    setupOutlet(); endpoint.args = {{"c", "1"}};
+    dc.httpSetting(&endpoint);
+    assert(endpoint.status == 200 && dc.energyClears == 1 && saves == 0 && dc.ledUpdates == 0);
+    puts("PASS: actual outlet handler validates all five enums before configuration/hardware/save changes; valid settings and energy clearing remain supported");
+}
+
 int main()
 {
+    testOutletSettings();
     for (const char *topic : {"%module%/%hostname%/%prefix%/", "%prefix%/%hostname%/",
             "dc1/%prefix%", "devices/dc1"})
     {

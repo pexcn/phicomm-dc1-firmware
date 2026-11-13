@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='dc1-tests-') as build:
                str(nanopb / 'pb_decode.c'), str(sdk_crc), *objects, '-o', binary]
     subprocess.run(command, cwd=root, check=True)
     subprocess.run([binary], check=True)
-# Run the network handler with the core's IPv4 parser and HTTP/save spies.
+# Run settings handlers with the core's IPv4 parser and HTTP/action spies.
 with tempfile.TemporaryDirectory(prefix='dc1-network-tests-') as build:
     source = (root / 'lib/esp_framework/src/Http.cpp').read_text()
     start = source.index('bool argumentFits(')
@@ -61,9 +61,12 @@ with tempfile.TemporaryDirectory(prefix='dc1-network-tests-') as build:
     start = source.index('bool IPAddress::fromString4(')
     handlers += source[start:source.index('IPAddress& IPAddress::operator=', start)]
     (Path(build) / 'network-handler.inc').write_text(handlers)
+    source = (root / 'src/DC1.cpp').read_text()
+    start = source.index('void DC1::httpSetting(')
+    (Path(build) / 'outlet-settings.inc').write_text(source[start:source.index('void DC1::httpStorage(', start)])
     binary = str(Path(build) / 'network')
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                    '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
+                    '-Ilib/esp_framework/include', '-Iinclude', '-I' + str(nanopb), '-I' + build,
                     'tests/host/network.cpp', '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
 # Check log-buffer bounds and streamed JSON escaping.

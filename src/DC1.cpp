@@ -464,11 +464,27 @@ void DC1::httpSetting(ESP8266WebServer *server)
         server->sendContent_P(PSTR("}}"));
         return;
     }
-    config.power_on_state = server->arg(F("power_on_state")).toInt();
-    config.power_mode = server->arg(F("power_mode")).toInt();
-    config.logo_led = server->arg(F("logo_led")).toInt();
-    config.wifi_led = server->arg(F("wifi_led")).toInt();
-    config.sub_kinkage = server->arg(F("sub_kinkage")).toInt();
+    auto readEnum = [server](const __FlashStringHelper *name, uint8_t maximum, uint8_t &value) {
+        const String text = server->arg(name);
+        if (text.length() != 1 || text[0] < '0' || text[0] > '0' + maximum) return false;
+        value = text[0] - '0';
+        return true;
+    };
+    uint8_t powerOnState, powerMode, logoLedMode, wifiLedMode, subLinkage;
+    if (!readEnum(F("power_on_state"), 3, powerOnState)
+        || !readEnum(F("power_mode"), 1, powerMode)
+        || !readEnum(F("logo_led"), 3, logoLedMode)
+        || !readEnum(F("wifi_led"), 2, wifiLedMode)
+        || !readEnum(F("sub_kinkage"), 2, subLinkage))
+    {
+        server->send_P(400, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"参数错误。\"}"));
+        return;
+    }
+    config.power_on_state = powerOnState;
+    config.power_mode = powerMode;
+    config.logo_led = logoLedMode;
+    config.wifi_led = wifiLedMode;
+    config.sub_kinkage = subLinkage;
 
     config.report_interval = server->arg(F("report_interval")).toInt();
     config.energy_power_delta = server->arg(F("energy_power_delta")).toInt();
