@@ -97,13 +97,15 @@ void Framework::setup()
     }
     if (globalConfig.uid[0] != '\0')
     {
-        strcpy(UID, globalConfig.uid);
+        strlcpy(UID, globalConfig.uid, sizeof(UID));
     }
     else
     {
         uint8_t mac[6];
         wifi_get_macaddr(STATION_IF, mac);
-        sprintf(UID, "%s_%02x%02x%02x", module->getModuleName().c_str(), mac[3], mac[4], mac[5]);
+        snprintf_P(UID, sizeof(UID), PSTR("%.*s_%02x%02x%02x"),
+            int(sizeof(UID) - 8), module->getModuleName().c_str(),
+            unsigned(mac[3]), unsigned(mac[4]), unsigned(mac[5]));
     }
     Util::strlowr(UID);
 
