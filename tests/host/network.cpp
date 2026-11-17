@@ -5,8 +5,10 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 #include "GlobalConfig.pb.h"
 #include "DC1Config.pb.h"
+#include "NightLight.h"
 
 #define F(text) text
 #define PSTR(text) text
@@ -94,6 +96,7 @@ struct DC1 {
     bool relaySavePending = false, runtimeMigrationPending = false;
     unsigned ledUpdates = 0, relaySchedules = 0, energyClears = 0;
     void logoLed() { ++ledUpdates; }
+    void updateNightLight() {}
     void scheduleRelaySave() { ++relaySchedules; relaySavePending = true; }
     bool energyClear() { ++energyClears; return true; }
     String httpGetStatus(Server *) { return ""; }
@@ -181,6 +184,37 @@ static void testOutletSettings()
     setupOutlet(); endpoint.args = {{"c", "1"}};
     dc.httpSetting(&endpoint);
     assert(endpoint.status == 200 && dc.energyClears == 1 && saves == 0 && dc.ledUpdates == 0);
+    // New fields are validated together before mutating existing settings.
+    for (const auto &bad : std::vector<std::pair<std::string, String>>{{"night_off_time", "24:00"},
+            {"night_latitude", "90.0001"}, {"night_longitude", "-180.0001"},
+            {"night_led_enabled", "2"}, {"night_latitude", ""}})
+    {
+        setupOutlet();
+        endpoint.args.insert({{"night_off_time", "23:00"}, {"night_led_enabled", "1"},
+            {"night_latitude", "30.2741"}, {"night_longitude", "120.1551"}});
+        endpoint.args[bad.first] = bad.second;
+        DC1 untouched;
+        const auto before = untouched.config;
+        untouched.httpSetting(&endpoint);
+        assert(endpoint.status == 400 && saves == 0 && untouched.ledUpdates == 0);
+        assert(memcmp(&before, &untouched.config, sizeof(before)) == 0);
+    }
+    setupOutlet();
+    endpoint.args.insert({{"night_off_time", "00:00"}, {"night_led_enabled", "1"},
+        {"night_latitude", "0"}, {"night_longitude", "-0.0001"}});
+    dc.httpSetting(&endpoint);
+    assert(endpoint.status == 200 && saves == 1 && dc.config.night_led_enabled);
+    assert(dc.config.night_off_start == 1 && dc.config.has_night_latitude
+        && dc.config.has_night_longitude && dc.config.night_latitude == 0
+        && dc.config.night_longitude == -1);
+    // A cached old UI must preserve the new settings; unchecking must disable them.
+    setupOutlet();
+    dc.httpSetting(&endpoint);
+    assert(dc.config.night_led_enabled && dc.config.night_off_start == 1);
+    endpoint.args.insert({{"night_off_time", "23:00"}, {"night_latitude", ""}, {"night_longitude", ""}});
+    dc.httpSetting(&endpoint);
+    assert(!dc.config.night_led_enabled && !dc.config.has_night_latitude
+        && !dc.config.has_night_longitude && dc.config.night_off_start == 0);
     puts("PASS: actual outlet handler validates all five enums before configuration/hardware/save changes; valid settings and energy clearing remain supported");
 }
 

@@ -452,6 +452,61 @@
                 >
               </div>
             </section>
+            <section class="card" aria-labelledby="night-title">
+              <div class="night-heading">
+                <h2 id="night-title">指示灯夜间模式</h2>
+                <label class="check switch-control">
+                  <span>启用</span>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label="启用指示灯夜间模式"
+                    name="night_led_enabled"
+                    value="1"
+                  />
+                  <span class="switch" aria-hidden="true"></span>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label class="field"
+                  >熄灯时间<input name="night_off_time" type="time" value="23:00" required /><small
+                    >每天按此时间熄灯，UTC+8。</small
+                  ></label
+                >
+                <label class="field"
+                  >恢复时间<input value="当地日出" readonly /><small
+                    >恢复原来的 LOGO 和 Wi-Fi 指示灯模式。</small
+                  ></label
+                >
+                <label class="field"
+                  >纬度<input
+                    name="night_latitude"
+                    type="number"
+                    min="-90"
+                    max="90"
+                    step="0.0001"
+                    placeholder="例如 30.2741"
+                  /><small>北纬为正，南纬为负。</small></label
+                >
+                <label class="field"
+                  >经度<input
+                    name="night_longitude"
+                    type="number"
+                    min="-180"
+                    max="180"
+                    step="0.0001"
+                    placeholder="例如 120.1551"
+                  /><small>东经为正，西经为负；最多四位小数。</small></label
+                >
+              </div>
+              <p class="night-status" role="status">
+                <span data-value="night_status">未启用</span
+                ><span>下次日出：<span data-value="night_sunrise">--</span>（UTC+8）</span>
+              </p>
+              <p class="hint">
+                仅控制指示灯，不影响插座供电。首次时间同步成功后生效；配网和维护操作保留灯光反馈。日出时间为本地估算。
+              </p>
+            </section>
             <section class="card">
               <h2>保护与上报</h2>
               <div class="form-grid">

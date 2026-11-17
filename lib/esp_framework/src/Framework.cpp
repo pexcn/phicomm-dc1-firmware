@@ -40,7 +40,7 @@ void Framework::callback(char *topic, byte *payload, unsigned int length)
 void Framework::connectedCallback()
 {
     Mqtt::subscribe(Mqtt::getCmndTopic(F("#")));
-    Led::blinkLED(40, 8);
+    if (!Led::isQuiet()) Led::blinkLED(40, 8);
     if (module)
     {
         module->mqttConnected();

@@ -15,6 +15,7 @@ protected:
     static Ticker *ledTicker2;
     static uint8_t ledType;
     static bool isOn;
+    static bool quiet;
 
 public:
     static void init(uint8_t _io, uint8_t _light);
@@ -25,6 +26,8 @@ public:
     static void on();
     static void off();
     static void toggle();
+    static void setQuiet(bool value);
+    static bool isQuiet() { return quiet; }
 };
 
 #endif

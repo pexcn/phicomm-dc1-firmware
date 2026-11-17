@@ -7,6 +7,7 @@
 #include "CAT9554.h"
 #include "CSE7766.h"
 #include "RuntimeStorage.h"
+#include "NightLight.h"
 
 #define MODULE_CFG_VERSION 1002 //1001 - 1500
 
@@ -69,6 +70,10 @@ private:
 
     uint8_t btnGPIO[4] = {KEY_0_PIN, KEY_1_PIN, KEY_2_PIN, KEY_3_PIN};
     uint8_t relGPIO[4] = {REL_0_PIN, REL_1_PIN, REL_2_PIN, REL_3_PIN};
+
+    NightLight nightLight;
+    void updateNightLight();
+    void applyNightLight();
 
     // 按键
     uint8_t buttonDebounceTime = 50;

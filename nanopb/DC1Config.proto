@@ -22,6 +22,13 @@ message DC1ConfigMessage {
     reserved 25 to 29;
     uint32 energy_max_power = 30 [(nanopb).int_size = IS_16];
 
+    bool night_led_enabled = 31;
+    // Minutes after midnight + 1; zero (old configuration) defaults to 23:00.
+    uint32 night_off_start = 32 [(nanopb).int_size = IS_16];
+    // Degrees * 10000. Presence distinguishes unset coordinates from 0 degrees.
+    optional sint32 night_latitude = 33;
+    optional sint32 night_longitude = 34;
+
 }
 
 // Decode-only compatibility with the old module configuration.

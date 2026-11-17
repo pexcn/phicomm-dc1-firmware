@@ -296,7 +296,11 @@ function renderStatus(data) {
 function schedulePoll(delay = 3000) {
   clearTimeout(timer);
   if (!config || document.hidden || maintenanceBusy || restarting) return;
-  if (activeView === 'settings' || (activeView === 'network' && !config.device.portal)) return;
+  if (activeView === 'settings') {
+    if (!config.module.night_led_enabled) return;
+    delay = Math.max(delay, 30000);
+  }
+  if (activeView === 'network' && !config.device.portal) return;
   if (activeView === 'logs' && !$('#log-auto').checked) return;
   timer = setTimeout(() => pollStatus(), delay);
 }
@@ -419,6 +423,7 @@ async function loadConfig() {
       fieldset.disabled = false;
     });
     configureFeatures(config.features);
+    updateNightFields();
     $$('form[data-settings]').forEach((form) => {
       form.dataset.baseline = formData(form).toString();
       dirtyStatus(form);
@@ -561,6 +566,10 @@ $$('form[data-settings]').forEach((form) => {
       if (!loggedIn || revision !== currentRevision) return;
       revision++;
       if (result.data) renderStatus(result.data);
+      if (form.id === 'socket-form') {
+        config.module.night_led_enabled = data.has('night_led_enabled') ? 1 : 0;
+        await pollStatus();
+      }
       form.dataset.baseline = submitted;
       dirtyStatus(form, true);
       toast(result.msg || '设置已保存。');
@@ -574,6 +583,14 @@ $$('form[data-settings]').forEach((form) => {
     }
   });
 });
+
+function updateNightFields() {
+  const form = $('#socket-form');
+  const enabled = form.elements.night_led_enabled.checked;
+  form.elements.night_latitude.required = enabled;
+  form.elements.night_longitude.required = enabled;
+}
+$('#socket-form').elements.night_led_enabled.addEventListener('change', updateNightFields);
 
 function updateDhcp() {
   const isStatic = $('#dhcp').value === '2';

@@ -588,6 +588,20 @@ static void testLegacyDecoding()
     pb_istream_t input = pb_istream_from_buffer(legacy, sizeof(legacy));
     assert(pb_decode(&input, DC1ConfigMessage_fields, &config));
     assert(config.power_on_state == 3);
+    assert(!config.night_led_enabled && !config.has_night_latitude
+        && !config.has_night_longitude && config.night_off_start == 0);
+    // Appended settings survive the real protobuf/config store without a version bump.
+    config.night_led_enabled = true;
+    config.night_off_start = 1;
+    config.has_night_latitude = config.has_night_longitude = true;
+    config.night_latitude = -338688;
+    config.night_longitude = 1512093;
+    assert(Config::moduleSaveConfig(1002, DC1ConfigMessage_size, DC1ConfigMessage_fields, &config));
+    DC1ConfigMessage restored = {};
+    assert(Config::moduleReadConfig(1002, sizeof(restored), DC1ConfigMessage_fields, &restored));
+    assert(restored.power_on_state == 3 && restored.night_led_enabled && restored.night_off_start == 1);
+    assert(restored.has_night_latitude && restored.has_night_longitude
+        && restored.night_latitude == -338688 && restored.night_longitude == 1512093);
     DC1LegacyStateMessage state = {};
     input = pb_istream_from_buffer(legacy, sizeof(legacy));
     assert(pb_decode(&input, DC1LegacyStateMessage_fields, &state) && state.last_state == 11);

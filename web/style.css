@@ -564,11 +564,13 @@ small {
     transform 160ms ease,
     background 160ms ease;
 }
-.switch[aria-checked='true']::before {
+.switch[aria-checked='true']::before,
+.switch-control input:checked + .switch::before {
   background: var(--accent);
   border-color: var(--accent);
 }
-.switch[aria-checked='true']::after {
+.switch[aria-checked='true']::after,
+.switch-control input:checked + .switch::after {
   background: #fff;
   box-shadow: 0 1px 3px #0003;
   transform: translateX(20px);
@@ -1471,4 +1473,46 @@ body.auth-screen > .backdrop {
   .login-card {
     padding: 32px 24px;
   }
+}
+
+.night-heading,
+.night-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.night-heading {
+  margin-bottom: 20px;
+}
+.night-heading h2 {
+  margin: 0;
+}
+.night-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+.switch-control {
+  position: relative;
+  min-height: 44px;
+  cursor: pointer;
+}
+.switch-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+}
+.switch-control input:focus-visible + .switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 18px;
+}
+.switch-control:has(input:disabled) {
+  opacity: 0.45;
+  cursor: default;
+}
+.switch-control:has(input:disabled) .switch {
+  pointer-events: none;
 }

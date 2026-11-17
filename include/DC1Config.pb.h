@@ -22,6 +22,14 @@ typedef struct _DC1ConfigMessage {
     uint64_t energy_voltage_calibration;
     uint64_t energy_current_calibration;
     uint16_t energy_max_power;
+    bool night_led_enabled;
+    /* Minutes after midnight + 1; zero (old configuration) defaults to 23:00. */
+    uint16_t night_off_start;
+    /* Degrees * 10000. Presence distinguishes unset coordinates from 0 degrees. */
+    bool has_night_latitude;
+    int32_t night_latitude;
+    bool has_night_longitude;
+    int32_t night_longitude;
 } DC1ConfigMessage;
 
 /* Decode-only compatibility with the old module configuration. */
@@ -40,9 +48,9 @@ extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define DC1ConfigMessage_init_default            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+#define DC1ConfigMessage_init_default            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, false, 0}
 #define DC1LegacyStateMessage_init_default       {0, 0, 0, 0, 0, 0}
-#define DC1ConfigMessage_init_zero               {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+#define DC1ConfigMessage_init_zero               {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, false, 0}
 #define DC1LegacyStateMessage_init_zero          {0, 0, 0, 0, 0, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
@@ -57,6 +65,10 @@ extern "C" {
 #define DC1ConfigMessage_energy_voltage_calibration_tag 23
 #define DC1ConfigMessage_energy_current_calibration_tag 24
 #define DC1ConfigMessage_energy_max_power_tag    30
+#define DC1ConfigMessage_night_led_enabled_tag   31
+#define DC1ConfigMessage_night_off_start_tag     32
+#define DC1ConfigMessage_night_latitude_tag      33
+#define DC1ConfigMessage_night_longitude_tag     34
 #define DC1LegacyStateMessage_last_state_tag     1
 #define DC1LegacyStateMessage_energy_kWhtoday_tag 25
 #define DC1LegacyStateMessage_energy_kWhyesterday_tag 26
@@ -76,7 +88,11 @@ X(a, STATIC,   SINGULAR, UINT32,   energy_power_delta,  21) \
 X(a, STATIC,   SINGULAR, UINT32,   energy_power_calibration,  22) \
 X(a, STATIC,   SINGULAR, UINT32,   energy_voltage_calibration,  23) \
 X(a, STATIC,   SINGULAR, UINT32,   energy_current_calibration,  24) \
-X(a, STATIC,   SINGULAR, UINT32,   energy_max_power,  30)
+X(a, STATIC,   SINGULAR, UINT32,   energy_max_power,  30) \
+X(a, STATIC,   SINGULAR, BOOL,     night_led_enabled,  31) \
+X(a, STATIC,   SINGULAR, UINT32,   night_off_start,  32) \
+X(a, STATIC,   OPTIONAL, SINT32,   night_latitude,   33) \
+X(a, STATIC,   OPTIONAL, SINT32,   night_longitude,  34)
 #define DC1ConfigMessage_CALLBACK NULL
 #define DC1ConfigMessage_DEFAULT NULL
 
@@ -99,7 +115,7 @@ extern const pb_msgdesc_t DC1LegacyStateMessage_msg;
 
 /* Maximum encoded size of messages (where known) */
 #define DC1CONFIG_PB_H_MAX_SIZE                  DC1ConfigMessage_size
-#define DC1ConfigMessage_size                    66
+#define DC1ConfigMessage_size                    88
 #define DC1LegacyStateMessage_size               51
 
 #ifdef __cplusplus

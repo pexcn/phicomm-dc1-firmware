@@ -81,6 +81,7 @@ void DC1::init()
 
 bool DC1::moduleLed()
 {
+    if (Wifi::configPortalStart != 0) return false;
     if (WiFi.status() == WL_CONNECTED && (globalConfig.mqtt.port ==0 || Mqtt::mqttClient.connected()))
     {
         if (config.wifi_led == 0)
@@ -118,8 +119,10 @@ void DC1::loop()
     if (bitRead(operationFlag, 0))
     {
         bitClear(operationFlag, 0);
+        updateNightLight();
         energyUpdate();
     }
+    applyNightLight();
     if (relaySavePending && (int32_t)(millis() - relaySaveAt) >= 0) saveRelay();
     if (energyResult != RuntimeStorage::Result::Invalid && !energySavePending
         && (int32_t)(millis() - energyCheckpointAt) >= 0)
@@ -131,6 +134,26 @@ void DC1::loop()
 void DC1::perSecondDo()
 {
     bitSet(operationFlag, 0);
+}
+
+void DC1::updateNightLight()
+{
+    nightLight.update(Rtc::rtcTime.valid ? Rtc::utcTime : 0,
+        Rtc::rtcTime.year, Rtc::rtcTime.day_of_year,
+        config.night_latitude, config.night_longitude,
+        config.night_off_start ? config.night_off_start - 1 : 23 * 60,
+        config.night_led_enabled && config.has_night_latitude && config.has_night_longitude);
+    applyNightLight();
+}
+
+void DC1::applyNightLight()
+{
+    bool quiet = nightLight.quiet && Wifi::configPortalStart == 0;
+    if (Led::isQuiet() != quiet)
+    {
+        Led::setQuiet(quiet);
+        logoLed();
+    }
 }
 
 // 配置
@@ -411,16 +434,44 @@ String DC1::httpGetStatus(ESP8266WebServer *server)
     data += ",\"runtime_ready\":" + String(RuntimeStorage::ready() ? 1 : 0);
     data += ",\"relay_needs_recovery\":" + String(relayResult == RuntimeStorage::Result::Invalid || !relayStateValid ? 1 : 0);
     data += ",\"energy_needs_recovery\":" + String(energyResult == RuntimeStorage::Result::Invalid ? 1 : 0);
+    data += F(",\"night_status\":\"");
+    data += !config.night_led_enabled ? F("未启用")
+        : !Rtc::rtcTime.valid ? F("等待时间同步，暂不熄灯")
+        : nightLight.nextRise < 0 ? F("当地暂无日出，沿用原灯光设置")
+        : Wifi::configPortalStart != 0 ? F("配网中，暂时保留灯光反馈")
+        : nightLight.quiet ? F("夜间熄灯中") : F("使用原灯光设置");
+    data += F("\",\"night_sunrise\":\"");
+    if (nightLight.nextRise >= 0)
+    {
+        uint16_t minute = nightLight.nextRise % 1440;
+        char rise[24];
+        snprintf_P(rise, sizeof(rise), PSTR("%s %02u:%02u"),
+            nightLight.nextRise >= 1440 ? "明日" : "今日", minute / 60, minute % 60);
+        data += rise;
+    }
+    else data += "--";
+    data += "\"";
     return data.substring(1);
 }
 
 String DC1::httpGetConfig()
 {
+    char latitude[16] = "", longitude[16] = "";
+    auto coordinate = [](char *dest, size_t size, int32_t value) {
+        snprintf_P(dest, size, PSTR("%s%ld.%04ld"), value < 0 ? "-" : "",
+            labs(value / 10000), labs(value % 10000));
+    };
+    if (config.has_night_latitude) coordinate(latitude, sizeof(latitude), config.night_latitude);
+    if (config.has_night_longitude) coordinate(longitude, sizeof(longitude), config.night_longitude);
+    uint16_t minute = config.night_off_start ? config.night_off_start - 1 : 23 * 60;
     snprintf_P(tmpData, sizeof(tmpData),
         PSTR("{\"power_on_state\":%u,\"power_mode\":%u,\"logo_led\":%u,\"wifi_led\":%u,"
-             "\"sub_kinkage\":%u,\"report_interval\":%u,\"energy_power_delta\":%u,\"energy_max_power\":%u}"),
+             "\"sub_kinkage\":%u,\"report_interval\":%u,\"energy_power_delta\":%u,\"energy_max_power\":%u,"
+             "\"night_led_enabled\":%u,\"night_off_time\":\"%02u:%02u\","
+             "\"night_latitude\":\"%s\",\"night_longitude\":\"%s\"}"),
         config.power_on_state, config.power_mode, config.logo_led, config.wifi_led,
-        config.sub_kinkage, config.report_interval, config.energy_power_delta, config.energy_max_power);
+        config.sub_kinkage, config.report_interval, config.energy_power_delta, config.energy_max_power,
+        config.night_led_enabled, minute / 60, minute % 60, latitude, longitude);
     return String(tmpData);
 }
 
@@ -480,6 +531,29 @@ void DC1::httpSetting(ESP8266WebServer *server)
         server->send_P(400, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"参数错误。\"}"));
         return;
     }
+    // Older clients may submit the existing settings without night-light fields.
+    bool nightFields = server->hasArg(F("night_off_time"));
+    uint16_t nightMinute = 0;
+    int32_t latitude = 0, longitude = 0;
+    bool enabled = server->hasArg(F("night_led_enabled"));
+    String lat = server->arg(F("night_latitude")), lon = server->arg(F("night_longitude"));
+    if (nightFields && (!NightLight::offTime(server->arg(F("night_off_time")).c_str(), nightMinute)
+        || (enabled && (server->arg(F("night_led_enabled")) != F("1") || lat.length() == 0 || lon.length() == 0))
+        || (lat.length() && !NightLight::coordinate(lat.c_str(), 900000, latitude))
+        || (lon.length() && !NightLight::coordinate(lon.c_str(), 1800000, longitude))))
+    {
+        server->send_P(400, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"请检查熄灯时间和经纬度（最多四位小数）。\"}"));
+        return;
+    }
+    if (nightFields)
+    {
+        config.night_led_enabled = enabled;
+        config.night_off_start = nightMinute == 23 * 60 ? 0 : nightMinute + 1;
+        config.has_night_latitude = lat.length() != 0;
+        config.has_night_longitude = lon.length() != 0;
+        config.night_latitude = latitude;
+        config.night_longitude = longitude;
+    }
     config.power_on_state = powerOnState;
     config.power_mode = powerMode;
     config.logo_led = logoLedMode;
@@ -490,6 +564,7 @@ void DC1::httpSetting(ESP8266WebServer *server)
     config.energy_power_delta = server->arg(F("energy_power_delta")).toInt();
     config.energy_max_power = server->arg(F("energy_max_power")).toInt();
 
+    updateNightLight();
     logoLed();
     if (config.power_on_state >= 2)
     {
@@ -609,7 +684,12 @@ void DC1::httpHa(ESP8266WebServer *server)
 
 void DC1::logoLed()
 {
-    if (config.logo_led == 0)
+    if (passwordFeedbackPeriod) return;
+    if (Led::isQuiet())
+    {
+        digitalWrite(LOGO_LED_PIN, HIGH);
+    }
+    else if (config.logo_led == 0)
     {
         digitalWrite(LOGO_LED_PIN, LOW);
     }

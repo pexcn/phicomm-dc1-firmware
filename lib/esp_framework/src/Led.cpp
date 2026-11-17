@@ -8,6 +8,7 @@ uint8_t Led::io = 99;
 uint8_t Led::light;
 uint8_t Led::ledType = 0;
 bool Led::isOn = false;
+bool Led::quiet = false;
 
 void Led::init(uint8_t _io, uint8_t _light)
 {
@@ -19,6 +20,7 @@ void Led::init(uint8_t _io, uint8_t _light)
     ledTicker = new Ticker();
     ledTicker2 = new Ticker();
 
+    isOn = true;
     off();
 }
 
@@ -28,7 +30,7 @@ void Led::loop()
     {
         return;
     }
-    if (module && module->moduleLed())
+    if (quiet || (module && module->moduleLed()))
     {
         if (ledTicker->active())
         {
@@ -66,7 +68,7 @@ void Led::loop()
 
 void Led::on()
 {
-    if (io != 99 && !isOn)
+    if (io != 99 && !isOn && !quiet)
     {
         isOn = true;
         digitalWrite(io, light);
@@ -89,7 +91,7 @@ void Led::toggle()
 
 void Led::led(int ms)
 {
-    if (io != 99)
+    if (io != 99 && !quiet)
     {
         on();
         ledTicker2->once_ms(ms, []() { off(); });
@@ -102,6 +104,8 @@ void Led::blinkLED(int duration, int n)
     {
         return;
     }
+    bool wasQuiet = quiet;
+    setQuiet(false); // Explicit maintenance feedback may override night mode.
     for (int i = 0; i < n; i++)
     {
         on();
@@ -112,4 +116,15 @@ void Led::blinkLED(int duration, int n)
             delay(duration);
         }
     }
+    setQuiet(wasQuiet);
+}
+
+void Led::setQuiet(bool value)
+{
+    if (quiet == value) return;
+    quiet = value;
+    ledTicker->detach();
+    ledTicker2->detach();
+    ledType = 99;
+    if (quiet) off();
 }

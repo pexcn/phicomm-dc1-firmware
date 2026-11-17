@@ -67,7 +67,27 @@ with tempfile.TemporaryDirectory(prefix='dc1-network-tests-') as build:
     binary = str(Path(build) / 'network')
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                     '-Ilib/esp_framework/include', '-Iinclude', '-I' + str(nanopb), '-I' + build,
-                    'tests/host/network.cpp', '-o', binary], cwd=root, check=True)
+                    'tests/host/network.cpp', 'src/NightLight.cpp', '-o', binary], cwd=root, check=True)
+    subprocess.run([binary], check=True)
+# Exercise the solar schedule and real LED control without sleeping or network I/O.
+with tempfile.TemporaryDirectory(prefix='dc1-night-tests-') as build:
+    source = (root / 'lib/esp_framework/src/Led.cpp').read_text()
+    (Path(build) / 'led.inc').write_text(source[source.index('Ticker *Led::ledTicker;'):])
+    for name in ['Arduino', 'Ticker']:
+        (Path(build) / (name + '.h')).write_text('// Declarations supplied by night.cpp.\n')
+    source = (root / 'src/DC1.cpp').read_text()
+    functions = ''
+    for start_name, end_name in [('bool DC1::moduleLed()', 'void DC1::loop()'),
+                               ('void DC1::updateNightLight()', '// 配置'),
+                               ('void DC1::logoLed()', 'bool DC1::saveRelay(')]:
+        start = source.index(start_name)
+        functions += source[start:source.index(end_name, start)]
+    (Path(build) / 'night-led.inc').write_text(functions)
+    binary = str(Path(build) / 'night')
+    subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                    '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                    '-Iinclude', '-Ilib/esp_framework/include', '-I' + str(nanopb), '-I' + build,
+                    'tests/host/night.cpp', 'src/NightLight.cpp', '-o', binary], cwd=root, check=True)
     subprocess.run([binary], check=True)
 # Check log-buffer bounds and streamed JSON escaping.
 with tempfile.TemporaryDirectory(prefix='dc1-log-tests-') as build:
