@@ -260,6 +260,10 @@ assert symbols['_FS_end'] == symbols['_RELAY_STATE_start'] == 0x402fa000
 assert symbols['_EEPROM_start'] == 0x402fb000
 assert symbols['_CONFIG_BACKUP_start'] == 0x40274000
 assert symbols['_irom0_text_end'] <= symbols['_CONFIG_BACKUP_start']
+for name in ['npio2_hw', 'two_over_pi', 'PIo2', 'init_jk']:
+    assert symbols['_irom0_text_start'] <= symbols[name] < symbols['_irom0_text_end']
+    assert symbols[name] % 4 == 0
+print('PASS: aligned libm range-reduction tables remain in memory-mapped flash')
 image_size = (root / '.pio/build/dc1/firmware.bin').stat().st_size
 rounded_size = (image_size + 4095) & ~4095
 update_start = symbols['_FS_start'] - 0x40200000 - rounded_size
