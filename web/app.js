@@ -772,7 +772,7 @@ $('#upload-form').addEventListener('submit', async (event) => {
   const payload = new FormData(form);
   const unlock = lockControls();
   maintenanceBusy = true;
-  revision++;
+  const currentRevision = ++revision;
   clearTimeout(timer);
   setOnline(online);
   $('#upload-button').disabled = true;
@@ -785,6 +785,7 @@ $('#upload-form').addEventListener('submit', async (event) => {
   xhr.responseType = 'json';
   xhr.timeout = 180000;
   xhr.upload.onprogress = (event) => {
+    if (!loggedIn || revision !== currentRevision) return;
     if (!event.lengthComputable) return;
     const percent = Math.floor((event.loaded * 100) / event.total);
     $('#upload-progress').value = percent;
@@ -794,6 +795,7 @@ $('#upload-form').addEventListener('submit', async (event) => {
         : '已上传 ' + percent + '%，请保持供电。';
   };
   const finish = (error, result) => {
+    if (!loggedIn || revision !== currentRevision) return;
     maintenanceBusy = false;
     $('#upload-button').disabled = false;
     if (error) {
@@ -809,6 +811,7 @@ $('#upload-form').addEventListener('submit', async (event) => {
     unlock();
   };
   xhr.onload = () => {
+    if (!loggedIn || revision !== currentRevision) return;
     if (xhr.status === 401) showLogin(false, '登录已失效，请重新登录。');
     const result = xhr.response;
     if (xhr.status >= 200 && xhr.status < 300 && result && Number(result.code) === 1)
@@ -828,6 +831,7 @@ $('#firmware-file').addEventListener('change', updateFirmwareName);
 
 function showLogin(setup = false, message = '') {
   clearRestartState();
+  maintenanceBusy = false;
   loggedIn = false;
   setupRequired = setup;
   config = null;
@@ -846,6 +850,10 @@ function showLogin(setup = false, message = '') {
     delete form.dataset.baseline;
   });
   updateFirmwareName();
+  $('#upload-button').disabled = false;
+  $('#upload-progress').hidden = true;
+  $('#upload-progress').value = 0;
+  $('#upload-status').textContent = '';
   $$('#main form > fieldset').forEach((fieldset) => {
     fieldset.disabled = true;
   });
@@ -925,6 +933,7 @@ $('#login-form').addEventListener('submit', async (event) => {
   $('#login-status').textContent = setupRequired ? '正在设置密码…' : '正在登录…';
   try {
     await request('/login', data);
+    history.replaceState(null, '', '#overview');
     await enterApp();
   } catch (error) {
     $('#login-error').textContent = error.message;
