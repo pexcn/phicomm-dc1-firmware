@@ -76,6 +76,8 @@ struct Http {
     static void handleMqtt();
     static void handledhcp();
     static bool captivePortal();
+    static void handleModuleSetting();
+    static bool prepareRestartOrError() { return true; }
     static bool checkAuth()
     {
         if (!authorized) server->send_P(401, "application/json", "{\"code\":0}");
@@ -90,6 +92,21 @@ struct Http {
 };
 Server *Http::server = &endpoint;
 struct Wifi { static bool isIp(const String &str); };
+static char UID[20] = "dc1-test";
+struct Rtc {
+    static unsigned refreshes, inits;
+    static int16_t offsetMinutes() {
+        return globalConfig.wifi.has_utc_offset_minutes ? globalConfig.wifi.utc_offset_minutes : 480;
+    }
+    static void init() { ++inits; }
+    static void refreshLocalTime() { ++refreshes; }
+};
+unsigned Rtc::refreshes, Rtc::inits;
+struct { void begin(unsigned) {} } Serial1;
+struct Led { static void blinkLED(unsigned, unsigned) {} };
+struct { unsigned restarts = 0; void restart() { ++restarts; } } ESP;
+struct Module { void mqttDiscovery(bool) {} };
+static Module *module = nullptr;
 using ESP8266WebServer = Server;
 struct DC1 {
     DC1ConfigMessage config = {};
@@ -221,6 +238,34 @@ static void testOutletSettings()
 int main()
 {
     testOutletSettings();
+    auto moduleSetup = [] {
+        setup(); Rtc::refreshes = Rtc::inits = 0; ESP.restarts = 0;
+        strcpy(globalConfig.uid, UID);
+        endpoint.args = {{"uid", UID}, {"ntp", ""}};
+    };
+    for (const char *valid : {"0", "345", "-210", "-720", "840", "480"}) {
+        moduleSetup(); endpoint.args["utc_offset"] = valid;
+        Http::handleModuleSetting();
+        int expected = std::atoi(valid);
+        assert(endpoint.status == 200 && saves == 1 && ESP.restarts == 0);
+        assert(Rtc::offsetMinutes() == expected && Rtc::refreshes == unsigned(expected != 480));
+        assert(globalConfig.wifi.has_utc_offset_minutes == (expected != 480));
+    }
+    for (const char *bad : {"", "-721", "841", "1", "480x", "--60", "9999999"}) {
+        moduleSetup(); endpoint.args["utc_offset"] = bad;
+        auto before = globalConfig;
+        Http::handleModuleSetting();
+        assert(endpoint.status == 400 && saves == 0 && Rtc::refreshes == 0);
+        assert(std::memcmp(&before, &globalConfig, sizeof(before)) == 0);
+    }
+    moduleSetup();
+    globalConfig.wifi.has_utc_offset_minutes = true; globalConfig.wifi.utc_offset_minutes = -300;
+    Http::handleModuleSetting(); // Older UI preserves the selected offset.
+    assert(Rtc::offsetMinutes() == -300 && Rtc::refreshes == 0);
+    endpoint.args["utc_offset"] = "345"; saveOk = false;
+    Http::handleModuleSetting();
+    assert(endpoint.status == 500 && Rtc::offsetMinutes() == -300 && Rtc::refreshes == 0);
+    puts("PASS: actual timezone handler accepts quarter-hour offsets, rejects invalid input before mutation, preserves old clients and rolls back failed saves");
     for (const char *topic : {"%module%/%hostname%/%prefix%/", "%prefix%/%hostname%/",
             "dc1/%prefix%", "devices/dc1"})
     {

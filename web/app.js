@@ -399,6 +399,15 @@ function configureFeatures(features) {
   });
 }
 
+// Fifteen-minute steps also cover half-hour and quarter-hour time zones.
+for (let offset = -720; offset <= 840; offset += 15) {
+  const magnitude = Math.abs(offset);
+  const label = `UTC${offset < 0 ? '−' : '+'}${String(Math.floor(magnitude / 60)).padStart(2, '0')}:${String(magnitude % 60).padStart(2, '0')}`;
+  const option = new Option(label, String(offset));
+  option.defaultSelected = offset === 480;
+  $('#utc-offset').add(option);
+}
+
 async function loadConfig() {
   $('#retry-config').disabled = true;
   try {

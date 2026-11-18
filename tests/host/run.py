@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix='dc1-network-tests-') as build:
     start = source.index('void Http::handledhcp()')
     handlers += source[start:source.index('void Http::handleScanWifi()', start)]
     start = source.index('bool Http::captivePortal()')
-    handlers += source[start:source.index('void Http::handleModuleSetting()', start)]
+    handlers += source[start:source.index('bool Http::resetPassword()', start)]
     source = (root / 'lib/esp_framework/src/Wifi.cpp').read_text()
     handlers += source[source.index('bool Wifi::isIp('):]
     source = (core / 'packages/framework-arduinoespressif8266/cores/esp8266/IPAddress.cpp').read_text()
@@ -83,6 +83,10 @@ with tempfile.TemporaryDirectory(prefix='dc1-night-tests-') as build:
         start = source.index(start_name)
         functions += source[start:source.index(end_name, start)]
     (Path(build) / 'night-led.inc').write_text(functions)
+    source = (root / 'lib/esp_framework/src/Rtc.cpp').read_text()
+    start = source.index('int16_t Rtc::offsetMinutes()')
+    table = source[source.index('static const uint8_t kDaysInMonth'):source.index('static const char kMonthNamesEnglish')]
+    (Path(build) / 'rtc-calendar.inc').write_text(table + source[start:source.index('void Rtc::loop()', start)])
     binary = str(Path(build) / 'night')
     subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                     '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',

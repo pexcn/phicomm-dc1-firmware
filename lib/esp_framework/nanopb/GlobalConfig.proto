@@ -27,6 +27,8 @@ message WifiConfigMessage {
 	string gw = 6 [(nanopb).max_size = 16];
 
 	string ntp = 7 [(nanopb).max_size = 40];
+    // Absent in older configurations: UTC+8. Explicit zero means UTC.
+    optional sint32 utc_offset_minutes = 8 [(nanopb).int_size = IS_16];
 }
 
 message HttpConfigMessage {

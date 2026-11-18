@@ -18,6 +18,9 @@ typedef struct _WifiConfigMessage {
     char sn[16];
     char gw[16];
     char ntp[40];
+    /* Absent in older configurations: UTC+8. Explicit zero means UTC. */
+    bool has_utc_offset_minutes;
+    int16_t utc_offset_minutes;
 } WifiConfigMessage;
 
 typedef struct _HttpConfigMessage {
@@ -60,12 +63,12 @@ extern "C" {
 
 /* Initializer values for message structs */
 #define GlobalConfigMessage_init_default         {WifiConfigMessage_init_default, HttpConfigMessage_init_default, MqttConfigMessage_init_default, DebugConfigMessage_init_default, 0, 0, {0, {0}}, ""}
-#define WifiConfigMessage_init_default           {"", "", 0, "", "", "", ""}
+#define WifiConfigMessage_init_default           {"", "", 0, "", "", "", "", false, 0}
 #define HttpConfigMessage_init_default           {0, ""}
 #define MqttConfigMessage_init_default           {"", 0, "", "", 0, "", 0, "", 0}
 #define DebugConfigMessage_init_default          {0}
 #define GlobalConfigMessage_init_zero            {WifiConfigMessage_init_zero, HttpConfigMessage_init_zero, MqttConfigMessage_init_zero, DebugConfigMessage_init_zero, 0, 0, {0, {0}}, ""}
-#define WifiConfigMessage_init_zero              {"", "", 0, "", "", "", ""}
+#define WifiConfigMessage_init_zero              {"", "", 0, "", "", "", "", false, 0}
 #define HttpConfigMessage_init_zero              {0, ""}
 #define MqttConfigMessage_init_zero              {"", 0, "", "", 0, "", 0, "", 0}
 #define DebugConfigMessage_init_zero             {0}
@@ -78,6 +81,7 @@ extern "C" {
 #define WifiConfigMessage_sn_tag                 5
 #define WifiConfigMessage_gw_tag                 6
 #define WifiConfigMessage_ntp_tag                7
+#define WifiConfigMessage_utc_offset_minutes_tag 8
 #define HttpConfigMessage_port_tag               1
 #define HttpConfigMessage_pass_tag               3
 #define MqttConfigMessage_server_tag             1
@@ -123,7 +127,8 @@ X(a, STATIC,   SINGULAR, BOOL,     is_static,         3) \
 X(a, STATIC,   SINGULAR, STRING,   ip,                4) \
 X(a, STATIC,   SINGULAR, STRING,   sn,                5) \
 X(a, STATIC,   SINGULAR, STRING,   gw,                6) \
-X(a, STATIC,   SINGULAR, STRING,   ntp,               7)
+X(a, STATIC,   SINGULAR, STRING,   ntp,               7) \
+X(a, STATIC,   OPTIONAL, SINT32,   utc_offset_minutes,   8)
 #define WifiConfigMessage_CALLBACK NULL
 #define WifiConfigMessage_DEFAULT NULL
 
@@ -167,10 +172,10 @@ extern const pb_msgdesc_t DebugConfigMessage_msg;
 /* Maximum encoded size of messages (where known) */
 #define DebugConfigMessage_size                  3
 #define GLOBALCONFIG_PB_H_MAX_SIZE               GlobalConfigMessage_size
-#define GlobalConfigMessage_size                 973
+#define GlobalConfigMessage_size                 977
 #define HttpConfigMessage_size                   105
 #define MqttConfigMessage_size                   177
-#define WifiConfigMessage_size                   146
+#define WifiConfigMessage_size                   150
 
 #ifdef __cplusplus
 } /* extern "C" */

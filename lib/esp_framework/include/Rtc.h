@@ -39,6 +39,9 @@ protected:
 
 public:
     static void breakTime(uint32_t time_input, TIME_T &tm, bool local = true);
+    static int16_t offsetMinutes();
+    static String offsetLabel();
+    static void refreshLocalTime();
     static uint32_t utcTime;
     static RtcReboot rtcReboot;
     static TIME_T rtcTime;

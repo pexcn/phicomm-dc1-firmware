@@ -125,6 +125,17 @@ static void testConfiguration()
     Config::readConfig();
     assert(strcmp(globalConfig.wifi.ssid, "example") == 0 && globalConfig.mqtt.port == 1883);
     assert(strcmp(globalConfig.wifi.ip, "192.168.100.200") == 0);
+    assert(!globalConfig.wifi.has_utc_offset_minutes); // Old configuration defaults to UTC+8.
+    for (int16_t offset : {0, -210, 345})
+    {
+        globalConfig.wifi.has_utc_offset_minutes = true;
+        globalConfig.wifi.utc_offset_minutes = offset;
+        assert(Config::saveConfig());
+        memset(&globalConfig, 0, sizeof(globalConfig));
+        Config::readConfig();
+        assert(globalConfig.wifi.has_utc_offset_minutes && globalConfig.wifi.utc_offset_minutes == offset);
+    }
+
 
     // Each kind of failure must leave a retry pending, even for the same data.
     for (int kind = 0; kind < 3; ++kind)

@@ -27,7 +27,7 @@ struct EnergyState
     {
         if (!utcDay) return;
         // Historical hourly usage cannot be reconstructed. Keep the counters and
-        // their age during the one-time switch; future rollovers use UTC+8.
+        // their age during the one-time switch; future rollovers use local time.
         if (day != 0) day += currentLocalDay - currentUtcDay;
         utcDay = false;
     }

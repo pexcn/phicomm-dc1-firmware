@@ -142,7 +142,8 @@ void DC1::updateNightLight()
         Rtc::rtcTime.year, Rtc::rtcTime.day_of_year,
         config.night_latitude, config.night_longitude,
         config.night_off_start ? config.night_off_start - 1 : 23 * 60,
-        config.night_led_enabled && config.has_night_latitude && config.has_night_longitude);
+        config.night_led_enabled && config.has_night_latitude && config.has_night_longitude,
+        Rtc::offsetMinutes());
     applyNightLight();
 }
 
@@ -906,13 +907,7 @@ void DC1::energyUpdate()
 {
     if (Rtc::rtcTime.valid)
     {
-        if (energy.startTime == 0)
-        {
-            energy.startTime = Rtc::utcTime;
-            TIME_T tmpTime;
-            Rtc::breakTime(energy.startTime, tmpTime);
-            snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"), tmpTime.year, tmpTime.month, tmpTime.day_of_month, tmpTime.hour, tmpTime.minute, tmpTime.second);
-        }
+        if (energy.startTime == 0) energy.startTime = Rtc::utcTime;
         TIME_T utcCalendar;
         Rtc::breakTime(Rtc::utcTime, utcCalendar, false);
         energy.resolveLegacyDay(utcCalendar.days, utcCalendar.day_of_year,
@@ -941,14 +936,6 @@ void DC1::energyInit()
     cse7766->Energy.kWhtoday_delta = 0;
     cse7766->Energy.daily = (float)(energy.today) / 100000;
     cse7766->Energy.total = (float)(energy.total) / 100000;
-
-    strcpy(kWhtotalTime, "--");
-    if (energy.startTime)
-    {
-        TIME_T tmpTime;
-        Rtc::breakTime(energy.startTime, tmpTime);
-        snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"), tmpTime.year, tmpTime.month, tmpTime.day_of_month, tmpTime.hour, tmpTime.minute, tmpTime.second);
-    }
 }
 
 bool DC1::energyClear()
@@ -1110,6 +1097,14 @@ void DC1::energyMaxPower()
 
 void DC1::energyShow(bool isMqtt)
 {
+    char kWhtotalTime[20] = "--";
+    if (energy.startTime)
+    {
+        TIME_T tm;
+        Rtc::breakTime(energy.startTime, tm);
+        snprintf_P(kWhtotalTime, sizeof(kWhtotalTime), PSTR("%04d-%02d-%02d %02d:%02d:%02d"),
+            tm.year, tm.month, tm.day_of_month, tm.hour, tm.minute, tm.second);
+    }
     const uint8_t current_resolution = 3;
     const uint8_t voltage_resolution = 0;
     const uint8_t wattage_resolution = 0;

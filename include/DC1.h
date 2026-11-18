@@ -56,7 +56,6 @@ private:
 
     CAT9554 *cat9554;
     CSE7766 *cse7766 = nullptr;
-    char kWhtotalTime[20];
     void energyInit();
     bool energyClear();
     void energyUpdate();

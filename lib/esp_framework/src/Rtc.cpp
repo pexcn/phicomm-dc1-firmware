@@ -70,6 +70,27 @@ String Rtc::uptime()
     return String(dt);
 }
 
+int16_t Rtc::offsetMinutes()
+{
+    return globalConfig.wifi.has_utc_offset_minutes ? globalConfig.wifi.utc_offset_minutes : 480;
+}
+
+String Rtc::offsetLabel()
+{
+    int16_t offset = offsetMinutes();
+    unsigned magnitude = offset < 0 ? -offset : offset;
+    char label[12];
+    snprintf_P(label, sizeof(label), PSTR("UTC%c%02u:%02u"), offset < 0 ? '-' : '+',
+        magnitude / 60, magnitude % 60);
+    return String(label);
+}
+
+void Rtc::refreshLocalTime()
+{
+    sntp_set_timezone_in_seconds(int32_t(offsetMinutes()) * 60);
+    if (rtcTime.valid) breakTime(utcTime, rtcTime);
+}
+
 void Rtc::breakTime(uint32_t time_input, TIME_T &tm, bool local)
 {
     // break the given time_input into time components
@@ -82,7 +103,7 @@ void Rtc::breakTime(uint32_t time_input, TIME_T &tm, bool local)
     uint32_t time;
     unsigned long days;
 
-    time = time_input + (local ? 8UL * 3600 : 0); // UTC+8 calendar, UTC timestamps on disk.
+    time = time_input + (local ? int32_t(offsetMinutes()) * 60 : 0); // Disk timestamps stay UTC.
     tm.second = time % 60;
     time /= 60; // now it is minutes
     tm.minute = time % 60;
@@ -185,10 +206,10 @@ void Rtc::init()
         if (!rtcTime.valid) return;
         int64_t correction = int64_t(utcTime) - previous;
         if (!synced || syncWarning || correction >= 5 || correction <= -5)
-            Debug::AddInfo(PSTR("NTP   Time %s: %04d-%02d-%02d %02d:%02d:%02d (UTC+8)"),
+            Debug::AddInfo(PSTR("NTP   Time %s: %04d-%02d-%02d %02d:%02d:%02d (%s)"),
                 !synced ? "synced" : syncWarning ? "recovered" : "adjusted",
                 rtcTime.year, rtcTime.month, rtcTime.day_of_month,
-                rtcTime.hour, rtcTime.minute, rtcTime.second);
+                rtcTime.hour, rtcTime.minute, rtcTime.second, offsetLabel().c_str());
         synced = true;
         syncWarning = false;
         lastSyncAt = millis();
@@ -206,7 +227,7 @@ void Rtc::init()
         sntp_setservername(1, (char *)"ntp2.aliyun.com");
         sntp_setservername(2, (char *)"ntp3.aliyun.com");
     }
-    sntp_set_timezone(8);
+    refreshLocalTime();
     sntp_init();
 }
 

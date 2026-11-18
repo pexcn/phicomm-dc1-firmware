@@ -223,6 +223,7 @@ void Http::handleConfig()
     sendJsonField("ssid", WiFi.SSID());
     sendJsonField("local_ip", server->client().localIP().toString());
     sendJsonField("wifi_mode", WiFi.getMode() == WIFI_STA ? F("STA") : WiFi.getMode() == WIFI_AP ? F("AP") : F("AP + STA"));
+    sendJsonField("utc_offset_label", Rtc::offsetLabel());
     sendJsonField("version", F(FIRMWARE_VERSION));
     sendJsonField("build_time", Rtc::GetBuildDateAndTime());
     sendJsonField("firmware_id", F(FIRMWARE_ID));
@@ -242,6 +243,7 @@ void Http::handleConfig()
     sendJsonField("static_netmask", globalConfig.wifi.sn);
     sendJsonField("static_gateway", globalConfig.wifi.gw);
     sendJsonField("ntp", globalConfig.wifi.ntp);
+    sendJsonField("utc_offset", String(Rtc::offsetMinutes()));
 #ifndef DISABLE_MQTT
     sendJsonField("mqtt_server", globalConfig.mqtt.server);
     sendJsonField("mqtt_username", globalConfig.mqtt.user);
@@ -623,7 +625,7 @@ void Http::handleGetStatus()
     server->setContentLength(CONTENT_LENGTH_UNKNOWN);
     server->send_P(200, PSTR("text/html"), PSTR("{\"code\":1,\"msg\":\"\",\"data\":{"));
 
-    snprintf_P(tmpData, sizeof(tmpData), PSTR("\"uptime\":\"%s\",\"free_mem\":%d,\"rssi\":%d"), Rtc::uptime().c_str(), ESP.getFreeHeap() / 1024, WiFi.RSSI());
+    snprintf_P(tmpData, sizeof(tmpData), PSTR("\"uptime\":\"%s\",\"free_mem\":%d,\"rssi\":%d,\"utc_offset_label\":\"%s\""), Rtc::uptime().c_str(), ESP.getFreeHeap() / 1024, WiFi.RSSI(), Rtc::offsetLabel().c_str());
     server->sendContent_P(tmpData);
 
 #ifndef DISABLE_MQTT
@@ -929,6 +931,28 @@ void Http::handleModuleSetting()
 
     if (!argumentFits("uid", sizeof(UID))
         || !argumentFits("ntp", sizeof(globalConfig.wifi.ntp))) return;
+    int16_t offset = Rtc::offsetMinutes();
+    bool offsetChanged = false;
+    if (server->hasArg(F("utc_offset")))
+    {
+        const String text = server->arg(F("utc_offset"));
+        unsigned i = text.length() && text[0] == '-' ? 1 : 0;
+        bool valid = text.length() > i && text.length() <= 4;
+        int value = 0;
+        for (; valid && i < text.length(); ++i)
+        {
+            valid = text[i] >= '0' && text[i] <= '9';
+            if (valid) value = value * 10 + text[i] - '0';
+        }
+        if (text.length() && text[0] == '-') value = -value;
+        if (!valid || value < -720 || value > 840 || value % 15 != 0)
+        {
+            server->send_P(400, PSTR("application/json"), PSTR("{\"code\":0,\"msg\":\"时区参数错误。\"}"));
+            return;
+        }
+        offsetChanged = offset != value;
+        offset = value;
+    }
     int t = 0;
     if (server->arg(F("log_serial")).equals(F("1")))
     {
@@ -961,7 +985,17 @@ void Http::handleModuleSetting()
 
     String uid = server->arg(F("uid"));
     strcpy(globalConfig.uid, uid.c_str());
-    if (!saveConfigOrError()) return;
+    bool oldHasOffset = globalConfig.wifi.has_utc_offset_minutes;
+    int16_t oldOffset = globalConfig.wifi.utc_offset_minutes;
+    globalConfig.wifi.has_utc_offset_minutes = offset != 480;
+    globalConfig.wifi.utc_offset_minutes = offset == 480 ? 0 : offset;
+    if (!saveConfigOrError())
+    {
+        globalConfig.wifi.has_utc_offset_minutes = oldHasOffset;
+        globalConfig.wifi.utc_offset_minutes = oldOffset;
+        return;
+    }
+    if (offsetChanged) Rtc::refreshLocalTime();
     if (uid.length() == 0 || strcmp(globalConfig.uid, UID) != 0)
     {
         if (!prepareRestartOrError()) return;

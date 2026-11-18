@@ -470,7 +470,8 @@
               <div class="form-grid">
                 <label class="field"
                   >熄灯时间<input name="night_off_time" type="time" value="23:00" required /><small
-                    >每天按此时间熄灯，UTC+8。</small
+                    >每天按设备时区（<span data-value="utc_offset_label">UTC+08:00</span
+                    >）熄灯。</small
                   ></label
                 >
                 <label class="field"
@@ -501,7 +502,12 @@
               </div>
               <p class="night-status" role="status">
                 <span data-value="night_status">未启用</span
-                ><span>下次日出：<span data-value="night_sunrise">--</span>（UTC+8）</span>
+                ><span
+                  >下次日出：<span data-value="night_sunrise">--</span>（<span
+                    data-value="utc_offset_label"
+                    >UTC+08:00</span
+                  >）</span
+                >
               </p>
               <p class="hint">
                 仅控制指示灯，不影响插座供电。首次时间同步成功后生效；配网和维护操作保留灯光反馈。日出时间为本地估算。
@@ -904,6 +910,14 @@
                     autocomplete="off"
                     placeholder="留空使用默认 NTP 服务器"
                   /><small>可填写域名或 IP 地址。</small></label
+                >
+              </div>
+              <div class="form-grid">
+                <label class="field"
+                  >设备时区<select name="utc_offset" id="utc-offset"></select
+                  ><small
+                    >固定 UTC 偏移，不自动切换夏令时；同时用于日志、日出和每日用电统计。</small
+                  ></label
                 >
               </div>
               <div class="check-row">
